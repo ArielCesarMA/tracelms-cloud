@@ -1,0 +1,10 @@
+{
+    "tracelm.llmProvider": "Gemini",
+    "tracelm.llmModel": "gemini-2.5-flash",
+    "tracelm.jiraUrl": "",
+    "tracelm.jiraProjectKey": "",
+    "tracelm.jiraEmail": "",
+    "tracelm.xrayBatchSize": 10,
+    "tracelm.xrayBatchDelayMs": 1000,
+    "tracelm.xrayMaxRetries": 3
+}

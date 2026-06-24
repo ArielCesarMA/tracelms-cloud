@@ -1,0 +1,3 @@
+"ID","Title","ScenarioID","RequirementRefs","Layer","Priority","Preconditions","Detailed Steps","ExpectedResult","Test Data"
+"TC-001","Valid Card Payment - Test Case","SC-001","US-001","API","High","User is logged in | Shopping cart has items","User enters card details | User clicks Pay | System processes payment","Order confirmation displayed","Valid test card: 4242 4242 4242 4242, Expiry: 12/25, CVV: 123"
+"TC-002","Invalid Card Rejection - Test Case","SC-002","US-001","UI","High","User is logged in | Shopping cart has items","User enters invalid card | User clicks Pay | System validates","Error message displayed","Valid test card: 4242 4242 4242 4242, Expiry: 12/25, CVV: 123"
