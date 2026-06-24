@@ -26,11 +26,15 @@ import { EnhancementTab } from './tabs/EnhancementTab';
 import { ScenariosTab } from './tabs/ScenariosTab';
 import { TestCasesTab } from './tabs/TestCasesTab';
 import { AutomationTab } from './tabs/AutomationTab';
+import { LLMProvidersTab } from './tabs/LLMProvidersTab';
+import { ProjectsTab } from './tabs/ProjectsTab';
+import { OutputTab } from './tabs/OutputTab';
+import { GuideTab } from './tabs/GuideTab';
 
 function App(): JSX.Element {
-  const [status, setStatus] = useState('Waiting for extension host...');
+  const [status, setStatus] = useState('Ready');
   const [feedback, setFeedback] = useState('');
-  const [activeTab, setActiveTab] = useState<TabKey>('settings');
+  const [activeTab, setActiveTab] = useState<TabKey>('requirements');
 
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [requirementText, setRequirementText] = useState('');
@@ -58,6 +62,10 @@ function App(): JSX.Element {
   const [xrayPushProgress, setXrayPushProgress] = useState<XrayPushProgress | null>(null);
   const [generationProgress, setGenerationProgress] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  // Tracks which Generate All step last failed + the exact error message.
+  // stepKey: null | 'enhancement+scenarios' | 'testCases' | 'automation'
+  const [failedStep, setFailedStep] = useState<string | null>(null);
+  const [failedMessage, setFailedMessage] = useState<string>('');
 
   // ── Refs (stable reads inside useCallback, avoids stale-closure deps) ────
   const requirementTextRef = useRef(requirementText);
@@ -70,7 +78,6 @@ function App(): JSX.Element {
   const requirementsReviewedRef = useRef(requirementsReviewed);
   const uploadDraftsRef = useRef(uploadDrafts);
   const generateAllStepRef = useRef<number>(0);
-  const lastGenIdRef = useRef<Record<string, string>>({});
 
   useEffect(() => { requirementTextRef.current = requirementText; }, [requirementText]);
   useEffect(() => { enhancementRef.current = enhancement; }, [enhancement]);
@@ -95,9 +102,10 @@ function App(): JSX.Element {
     saveSettings, testLlm, testJira,
     parseSelectedFiles, searchStories: searchStoriesAction, pullFromJira: pullFromJiraAction,
     generateEnhancement, generateAll, generateScenarios, generateTestCases,
+    generateAutomationAnalysis,
     pushTestCasesToXray, retryFailedPushes, previewXrayPush, clearXrayHistory,
   } = useTraceLMMessages({
-    generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef, lastGenIdRef,
+    generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
     settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef,
     setStatus, setFeedback, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
@@ -108,6 +116,10 @@ function App(): JSX.Element {
     onEnhancementReceived: () => setEnhancementGeneratedAt(new Date()),
     onScenariosReceived: () => setScenariosGeneratedAt(new Date()),
     onChainSettled: () => { /* watchdog is now handled inside the hook */ },
+    // BUG-8 fix: navigate to automation tab when Generate All finishes.
+    onGenerateAllDone: () => { setActiveTab('automation'); setFailedStep(null); setFailedMessage(''); },
+    // Per-step retry: record which phase failed and the exact error so the banner is actionable.
+    onGenerateAllFailed: (stepKey, errorMessage) => { setFailedStep(stepKey); setFailedMessage(errorMessage); },
   });
 
   // ── Settings ──────────────────────────────────────────────────────────────
@@ -170,14 +182,31 @@ function App(): JSX.Element {
     setRequirementsReviewed(false);
   }, []);
 
+  const clearAll = useCallback((): void => {
+    setRequirementText('');
+    setRequirementsReviewed(false);
+    setUploadDrafts([]);
+    setParsedFiles([]);
+    setEnhancement(emptyEnhancement);
+    setEnhancementGeneratedAt(null);
+    setScenarios([]);
+    setScenariosGeneratedAt(null);
+    setTestCases([]);
+    setAutomation(null);
+    setFeedback('');
+    setGenerationProgress('');
+    setFailedStep(null);
+    setFailedMessage('');
+  }, []);
+
   // ── Automation ────────────────────────────────────────────────────────────
 
-  // generateTestCases from hook covers the individual step;
-  // full automation analysis is triggered via generateAll or directly.
+  // BUG-2 fix: use dedicated generateAutomationAnalysis which reads current state
+  // and never re-runs test case generation.
   const analyzeAutomation = useCallback((): void => {
-    if (!testCasesRef.current.length) { setFeedback('Generate test cases first.'); return; }
-    generateTestCases(); // Re-runs test cases then triggers automation via the chain
-  }, [testCasesRef, generateTestCases, setFeedback]);
+    setFailedStep(null);
+    generateAutomationAnalysis();
+  }, [generateAutomationAnalysis]);
 
   // ── Scenario editing ──────────────────────────────────────────────────────
 
@@ -273,144 +302,297 @@ function App(): JSX.Element {
     [enhancement]
   );
 
-  const tabs: { key: TabKey; label: string; count: number }[] = [
-    { key: 'settings',     label: 'Settings',                count: 0 },
-    { key: 'requirements', label: 'Requirements',            count: 0 },
-    { key: 'enhancement',  label: 'Requirement Enhancement', count: enhancementTotal },
-    { key: 'scenarios',    label: 'Test Scenarios',          count: scenarios.length },
-    { key: 'testCases',    label: 'Test Cases',              count: testCases.length },
-    { key: 'automation',   label: 'Automation Candidates',   count: automation?.items.length ?? 0 },
+  const statusDotClass = isBusy
+    ? 'sidebar-status-dot sidebar-status-dot--busy'
+    : status.toLowerCase().includes('error') || status.toLowerCase().includes('failed')
+    ? 'sidebar-status-dot sidebar-status-dot--error'
+    : status.toLowerCase().includes('ready') || status.toLowerCase().includes('saved') || status.toLowerCase().includes('ok')
+    ? 'sidebar-status-dot sidebar-status-dot--ready'
+    : 'sidebar-status-dot';
+
+  const nav = (key: TabKey): void => setActiveTab(key);
+
+  const generateItems: { key: TabKey; label: string; step: number; count?: number }[] = [
+    { key: 'requirements', label: 'Requirements',  step: 1 },
+    { key: 'enhancement',  label: 'Enhancement',   step: 2, count: enhancementTotal || undefined },
+    { key: 'scenarios',    label: 'Scenarios',      step: 3, count: scenarios.length || undefined },
+    { key: 'testCases',    label: 'Test Cases',     step: 4, count: testCases.length || undefined },
+    { key: 'automation',   label: 'Automation',     step: 5, count: automation?.items.length || undefined },
+  ];
+
+  const settingsItems: { key: TabKey; label: string }[] = [
+    { key: 'integrations',  label: 'Integrations' },
+    { key: 'llm-providers', label: 'LLM Providers' },
+    { key: 'projects',      label: 'Projects' },
+    { key: 'output',        label: 'Output' },
   ];
 
   return (
-    <main>
-      <h1>TraceLMs Cloud</h1>
-      <p>{status}</p>
+    <div className="app-layout">
 
-      <div className="tab-row">
-        {tabs.map(({ key, label, count }) => (
-          <button
-            key={key}
-            type="button"
-            className={activeTab === key ? 'tab active' : 'tab'}
-            onClick={() => setActiveTab(key)}
-          >
-            {label}
-            {count > 0 && <span className="tab-count">{count}</span>}
-          </button>
-        ))}
-      </div>
+      {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
+      <aside className="sidebar" aria-label="Main navigation">
 
-      {activeTab === 'settings' && (
-        <ErrorBoundary tabName="Settings">
-          <SettingsTab
-            settings={settings}
-            availableModels={availableModels}
-            isBusy={isBusy}
-            feedback={feedback}
-            onFieldChange={updateSettingsField}
-            onSave={saveSettings}
-            onTestLlm={testLlm}
-            onTestJira={testJira}
-          />
-        </ErrorBoundary>
-      )}
+        {/* Brand */}
+        <div className="sidebar-brand">
+          <div className="sidebar-logo" aria-hidden="true">T</div>
+          <div className="sidebar-brand-text">
+            <span className="sidebar-brand-name">TraceLMs</span>
+            <span className="sidebar-brand-sub">Cloud</span>
+          </div>
+        </div>
 
-      {activeTab === 'requirements' && (
-        <ErrorBoundary tabName="Requirements">
-          <RequirementsTab
-            requirementText={requirementText}
-            requirementsReviewed={requirementsReviewed}
-            generationProgress={generationProgress}
-            parsedFiles={parsedFiles}
-            uploadDrafts={uploadDrafts}
-            jiraMode={jiraMode}
-            singleIssueKey={singleIssueKey}
-            multipleIssueKeys={multipleIssueKeys}
-            epicKey={epicKey}
-            storyQuery={storyQuery}
-            storyOptions={storyOptions}
-            selectedStoryKeys={selectedStoryKeys}
-            pulledIssues={pulledIssues}
-            isBusy={isBusy}
-            feedback={feedback}
-            onRequirementTextChange={handleRequirementTextChange}
-            onReviewedChange={setRequirementsReviewed}
-            onGenerateAll={generateAll}
-            onFileChange={handleFileChange}
-            onParseFiles={parseSelectedFiles}
-            onJiraModeChange={setJiraMode}
-            onSingleKeyChange={setSingleIssueKey}
-            onMultipleKeysChange={setMultipleIssueKeys}
-            onEpicKeyChange={setEpicKey}
-            onStoryQueryChange={setStoryQuery}
-            onSearchStories={searchStories}
-            onToggleStoryKey={toggleStoryKey}
-            onPullJira={pullFromJira}
-          />
-        </ErrorBoundary>
-      )}
+        {/* Nav */}
+        <nav className="sidebar-nav">
 
-      {activeTab === 'enhancement' && (
-        <ErrorBoundary tabName="Requirement Enhancement">
-          <EnhancementTab
-            enhancement={enhancement}
-            isBusy={isBusy}
-            feedback={feedback}
-            generatedAt={enhancementGeneratedAt}
-            onGenerate={generateEnhancement}
-            onUpdateItem={updateEnhancementItem}
-            onDeleteItem={deleteEnhancementItem}
-          />
-        </ErrorBoundary>
-      )}
+          {/* Generate section */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-label">Generate</span>
+            {generateItems.map(({ key, label, step, count }) => (
+              <button
+                key={key}
+                type="button"
+                className={`sidebar-item${activeTab === key ? ' active' : ''}`}
+                onClick={() => nav(key)}
+                aria-current={activeTab === key ? 'page' : undefined}
+              >
+                <span className="sidebar-item-inner">
+                  <span className="sidebar-step" aria-hidden="true">{step}</span>
+                  {label}
+                </span>
+                {count !== undefined && (
+                  <span className="sidebar-count" aria-label={`${count} items`}>{count}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-      {activeTab === 'scenarios' && (
-        <ErrorBoundary tabName="Test Scenarios">
-          <ScenariosTab
-            scenarios={scenarios}
-            isBusy={isBusy}
-            feedback={feedback}
-            generatedAt={scenariosGeneratedAt}
-            onGenerate={generateScenarios}
-            onUpdateField={updateScenarioField}
-            onAddScenario={addScenario}
-            onDeleteScenario={deleteScenario}
-          />
-        </ErrorBoundary>
-      )}
+          <div className="sidebar-divider" aria-hidden="true" />
 
-      {activeTab === 'testCases' && (
-        <ErrorBoundary tabName="Test Cases">
-          <TestCasesTab
-            testCases={testCases}
-            xrayPushPreview={xrayPushPreview}
-            xrayPushProgress={xrayPushProgress}
-            xrayPushedIssues={xrayPushedIssues}
-            isBusy={isBusy}
-            feedback={feedback}
-            onGenerateTestCases={generateTestCases}
-            onPreviewPush={previewXrayPush}
-            onPushToXray={pushTestCasesToXray}
-            onRetryFailed={retryFailedPushes}
-            onClearHistory={clearXrayHistory}
-          />
-        </ErrorBoundary>
-      )}
+          {/* Settings section */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-label">Settings</span>
+            {settingsItems.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`sidebar-item${activeTab === key ? ' active' : ''}`}
+                onClick={() => nav(key)}
+                aria-current={activeTab === key ? 'page' : undefined}
+              >
+                <span className="sidebar-item-inner">{label}</span>
+              </button>
+            ))}
+          </div>
 
-      {activeTab === 'automation' && (
-        <ErrorBoundary tabName="Automation Candidates">
-          <AutomationTab
-            automation={automation}
-            isBusy={isBusy}
-            feedback={feedback}
-            onAnalyze={analyzeAutomation}
-            onExportJson={exportAutomationJson}
-            onExportCsv={exportAutomationCsv}
-          />
-        </ErrorBoundary>
-      )}
-    </main>
+          <div className="sidebar-divider" aria-hidden="true" />
+
+          {/* Guide */}
+          <div className="sidebar-section">
+            <button
+              type="button"
+              className={`sidebar-item${activeTab === 'guide' ? ' active' : ''}`}
+              onClick={() => nav('guide')}
+              aria-current={activeTab === 'guide' ? 'page' : undefined}
+            >
+              <span className="sidebar-item-inner">Guide</span>
+            </button>
+          </div>
+
+        </nav>
+
+        {/* Footer — status */}
+        <div className="sidebar-footer" role="status" aria-live="polite">
+          <span className={statusDotClass} aria-hidden="true" />
+          <span className="sidebar-status-text">{status}</span>
+          <span className="sidebar-version">v0.1.0</span>
+        </div>
+
+      </aside>
+
+      {/* ── Main Content ─────────────────────────────────────────────────── */}
+      <main className="main-area">
+
+        {/* Per-step retry banner */}
+        {failedStep !== null && !isBusy && (
+          <div className="retry-banner" role="alert">
+            <div className="retry-banner__body">
+              <span className="retry-banner__label">
+                {failedStep === 'enhancement+scenarios' && 'Generate All stopped at Phase 1 (Enhancement + Scenarios)'}
+                {failedStep === 'testCases'             && 'Generate All stopped at Test Cases'}
+                {failedStep === 'automation'            && 'Generate All stopped at Automation Analysis'}
+              </span>
+              {failedMessage && <span className="retry-banner__error">{failedMessage}</span>}
+              <span className="retry-banner__hint">
+                {failedStep === 'enhancement+scenarios' && 'Requirements are still loaded — retry from the beginning.'}
+                {failedStep === 'testCases'             && 'Enhancement and Scenarios were saved — retry just this step.'}
+                {failedStep === 'automation'            && 'Test Cases were saved — retry just this step.'}
+              </span>
+            </div>
+            <div className="retry-banner__actions">
+              {failedStep === 'enhancement+scenarios' && (
+                <button type="button" className="btn btn-sm btn-retry"
+                  onClick={() => { setFailedStep(null); setFailedMessage(''); generateAll(); }}>
+                  ↩ Retry Generate All
+                </button>
+              )}
+              {failedStep === 'testCases' && (
+                <button type="button" className="btn btn-sm btn-retry"
+                  onClick={() => { setFailedStep(null); setFailedMessage(''); setActiveTab('testCases'); generateTestCases(); }}>
+                  ↩ Retry Test Cases
+                </button>
+              )}
+              {failedStep === 'automation' && (
+                <button type="button" className="btn btn-sm btn-retry"
+                  onClick={() => { setFailedStep(null); setFailedMessage(''); setActiveTab('automation'); analyzeAutomation(); }}>
+                  ↩ Retry Automation Analysis
+                </button>
+              )}
+              <button type="button" className="btn btn-sm btn-secondary"
+                onClick={() => { setFailedStep(null); setFailedMessage(''); }}
+                aria-label="Dismiss">✕</button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab panels */}
+        {activeTab === 'requirements' && (
+          <ErrorBoundary tabName="Requirements">
+            <RequirementsTab
+              requirementText={requirementText}
+              requirementsReviewed={requirementsReviewed}
+              generationProgress={generationProgress}
+              parsedFiles={parsedFiles}
+              uploadDrafts={uploadDrafts}
+              jiraMode={jiraMode}
+              singleIssueKey={singleIssueKey}
+              multipleIssueKeys={multipleIssueKeys}
+              epicKey={epicKey}
+              storyQuery={storyQuery}
+              storyOptions={storyOptions}
+              selectedStoryKeys={selectedStoryKeys}
+              pulledIssues={pulledIssues}
+              isBusy={isBusy}
+              feedback={feedback}
+              onRequirementTextChange={handleRequirementTextChange}
+              onReviewedChange={setRequirementsReviewed}
+              onGenerateAll={generateAll}
+              onClearAll={clearAll}
+              onFileChange={handleFileChange}
+              onParseFiles={parseSelectedFiles}
+              onJiraModeChange={setJiraMode}
+              onSingleKeyChange={setSingleIssueKey}
+              onMultipleKeysChange={setMultipleIssueKeys}
+              onEpicKeyChange={setEpicKey}
+              onStoryQueryChange={setStoryQuery}
+              onSearchStories={searchStories}
+              onToggleStoryKey={toggleStoryKey}
+              onPullJira={pullFromJira}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'enhancement' && (
+          <ErrorBoundary tabName="Requirement Enhancement">
+            <EnhancementTab
+              enhancement={enhancement}
+              isBusy={isBusy}
+              feedback={feedback}
+              generatedAt={enhancementGeneratedAt}
+              onGenerate={generateEnhancement}
+              onUpdateItem={updateEnhancementItem}
+              onDeleteItem={deleteEnhancementItem}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'scenarios' && (
+          <ErrorBoundary tabName="Test Scenarios">
+            <ScenariosTab
+              scenarios={scenarios}
+              isBusy={isBusy}
+              feedback={feedback}
+              generatedAt={scenariosGeneratedAt}
+              onGenerate={generateScenarios}
+              onUpdateField={updateScenarioField}
+              onAddScenario={addScenario}
+              onDeleteScenario={deleteScenario}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'testCases' && (
+          <ErrorBoundary tabName="Test Cases">
+            <TestCasesTab
+              testCases={testCases}
+              xrayPushPreview={xrayPushPreview}
+              xrayPushProgress={xrayPushProgress}
+              xrayPushedIssues={xrayPushedIssues}
+              isBusy={isBusy}
+              feedback={feedback}
+              onGenerateTestCases={generateTestCases}
+              onPreviewPush={previewXrayPush}
+              onPushToXray={pushTestCasesToXray}
+              onRetryFailed={retryFailedPushes}
+              onClearHistory={clearXrayHistory}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'automation' && (
+          <ErrorBoundary tabName="Automation Candidates">
+            <AutomationTab
+              automation={automation}
+              isBusy={isBusy}
+              feedback={feedback}
+              onAnalyze={analyzeAutomation}
+              onExportJson={exportAutomationJson}
+              onExportCsv={exportAutomationCsv}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'integrations' && (
+          <ErrorBoundary tabName="Integrations">
+            <SettingsTab
+              settings={settings}
+              availableModels={availableModels}
+              isBusy={isBusy}
+              feedback={feedback}
+              onFieldChange={updateSettingsField}
+              onSave={saveSettings}
+              onTestLlm={testLlm}
+              onTestJira={testJira}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'llm-providers' && (
+          <ErrorBoundary tabName="LLM Providers">
+            <LLMProvidersTab />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'projects' && (
+          <ErrorBoundary tabName="Projects">
+            <ProjectsTab />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'output' && (
+          <ErrorBoundary tabName="Output">
+            <OutputTab />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'guide' && (
+          <ErrorBoundary tabName="Guide">
+            <GuideTab />
+          </ErrorBoundary>
+        )}
+
+      </main>
+    </div>
   );
 }
 

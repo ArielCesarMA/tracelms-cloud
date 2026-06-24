@@ -79,12 +79,12 @@ export const TestCasesTab = memo(function TestCasesTab({
 
       <div className="button-row">
         <button type="button" onClick={onGenerateTestCases} disabled={isBusy}>Generate Test Cases</button>
-        <button type="button" onClick={exportGherkin} disabled={!filteredTestCases.length}>Export .feature</button>
-        <button type="button" onClick={exportCsv} disabled={!filteredTestCases.length}>Export CSV</button>
-        <button type="button" onClick={onPreviewPush} disabled={isBusy || !testCases.length}>Preview Push</button>
+        <button type="button" data-variant="secondary" onClick={exportGherkin} disabled={!filteredTestCases.length}>Export .feature</button>
+        <button type="button" data-variant="secondary" onClick={exportCsv} disabled={!filteredTestCases.length}>Export CSV</button>
+        <button type="button" data-variant="secondary" onClick={onPreviewPush} disabled={isBusy || !testCases.length}>Preview Push</button>
         <button type="button" onClick={onPushToXray} disabled={isBusy || !testCases.length}>Push to Xray</button>
-        <button type="button" onClick={onRetryFailed} disabled={isBusy || !hasFailures}>Retry Failed Push</button>
-        <button type="button" onClick={onClearHistory} disabled={isBusy || !xrayPushedIssues.length}>Clear Push History</button>
+        <button type="button" data-variant="secondary" onClick={onRetryFailed} disabled={isBusy || !hasFailures}>Retry Failed</button>
+        <button type="button" data-variant="danger" onClick={onClearHistory} disabled={isBusy || !xrayPushedIssues.length}>Clear History</button>
       </div>
 
       {!testCases.length ? (

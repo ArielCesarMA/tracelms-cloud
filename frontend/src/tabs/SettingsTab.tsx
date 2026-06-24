@@ -17,7 +17,7 @@ export const SettingsTab = memo(function SettingsTab({ settings, availableModels
 
   return (
     <section className="panel">
-      <h2>Settings</h2>
+      <h2>Integrations</h2>
 
       <div className="settings-section">
         <p className="settings-section-title">LLM Configuration</p>
@@ -27,6 +27,7 @@ export const SettingsTab = memo(function SettingsTab({ settings, availableModels
             <option value="OpenAI">OpenAI</option>
             <option value="Anthropic">Anthropic</option>
             <option value="Gemini">Gemini</option>
+            <option value="Groq">Groq (Free)</option>
           </select>
         </div>
         <div className="field-row">
@@ -87,8 +88,8 @@ export const SettingsTab = memo(function SettingsTab({ settings, availableModels
 
       <div className="button-row">
         <button type="button" onClick={onSave} disabled={isBusy}>Save Settings</button>
-        <button type="button" onClick={onTestLlm} disabled={isBusy}>Test LLM</button>
-        <button type="button" onClick={onTestJira} disabled={isBusy}>Test Jira/Xray</button>
+        <button type="button" data-variant="secondary" onClick={onTestLlm} disabled={isBusy}>Test LLM</button>
+        <button type="button" data-variant="secondary" onClick={onTestJira} disabled={isBusy}>Test Jira / Xray</button>
       </div>
       <p className="feedback">{feedback}</p>
     </section>

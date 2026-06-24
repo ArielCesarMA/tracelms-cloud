@@ -1,6 +1,7 @@
 import { LLMProviderName, LLMRequest, LLMResponse, StreamChunkHandler } from '../../types';
 import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
+import { GroqProvider } from './GroqProvider';
 import { LLMProvider } from './LLMProvider';
 import { OpenAIProvider } from './OpenAIProvider';
 
@@ -27,6 +28,8 @@ export class LLMService {
         return new AnthropicProvider(apiKey);
       case 'Gemini':
         return new GeminiProvider(apiKey);
+      case 'Groq':
+        return new GroqProvider(apiKey);
       default:
         throw new Error(`Unsupported LLM provider: ${providerName}`);
     }

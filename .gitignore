@@ -10,3 +10,5 @@ yarn-debug.log*
 Thumbs.db
 .env
 .env.local
+
+/src/generated/prisma

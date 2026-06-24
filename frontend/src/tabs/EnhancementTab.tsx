@@ -167,10 +167,10 @@ export const EnhancementTab = memo(function EnhancementTab({
             </div>
           )}
         </div>
-        <button type="button" onClick={exportJson} disabled={!hasFindings}>Export JSON</button>
-        <button type="button" onClick={exportCsv} disabled={!hasFindings}>Export CSV</button>
+        <button type="button" data-variant="secondary" onClick={exportJson} disabled={!hasFindings}>Export JSON</button>
+        <button type="button" data-variant="secondary" onClick={exportCsv} disabled={!hasFindings}>Export CSV</button>
         {hasFindings && (
-          <button type="button" onClick={allCollapsed ? expandAll : collapseAll}>
+          <button type="button" data-variant="ghost" onClick={allCollapsed ? expandAll : collapseAll}>
             {allCollapsed ? 'Expand All' : 'Collapse All'}
           </button>
         )}

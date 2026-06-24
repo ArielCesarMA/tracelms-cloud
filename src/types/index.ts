@@ -1,4 +1,4 @@
-export type LLMProviderName = 'OpenAI' | 'Anthropic' | 'Gemini';
+export type LLMProviderName = 'OpenAI' | 'Anthropic' | 'Gemini' | 'Groq';
 
 export interface TraceLMSettings {
   llmProvider: LLMProviderName;

@@ -1,8 +1,8 @@
 module.exports = {
   projects: [
-    // ── Extension host (Node.js) ──────────────────────────────────────────────
+    // ── Backend (Node.js) ─────────────────────────────────────────────────────
     {
-      displayName: 'extension',
+      displayName: 'backend',
       testEnvironment: 'node',
       roots: ['<rootDir>/src'],
       testMatch: ['**/__tests__/**/*.test.ts'],
@@ -12,24 +12,21 @@ module.exports = {
       },
     },
 
-    // ── React Webview (jsdom) ─────────────────────────────────────────────────
+    // ── Frontend / React (jsdom) ──────────────────────────────────────────────
     {
-      displayName: 'webview',
+      displayName: 'frontend',
       testEnvironment: 'jest-environment-jsdom',
-      roots: ['<rootDir>/webview-ui/src'],
+      roots: ['<rootDir>/frontend/src'],
       testMatch: ['**/__tests__/**/*.test.tsx', '**/__tests__/**/*.test.ts'],
       moduleFileExtensions: ['tsx', 'ts', 'js'],
       transform: {
-        '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: '<rootDir>/webview-ui/tsconfig.json' }],
+        '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: '<rootDir>/frontend/tsconfig.json' }],
       },
       moduleNameMapper: {
-        // Route all React imports to the single copy inside webview-ui/node_modules
-        // so @testing-library/react and the components use the exact same React instance.
-        '^react$': '<rootDir>/webview-ui/node_modules/react',
-        '^react/jsx-runtime$': '<rootDir>/webview-ui/node_modules/react/jsx-runtime',
-        '^react-dom$': '<rootDir>/webview-ui/node_modules/react-dom',
-        '^react-dom/client$': '<rootDir>/webview-ui/node_modules/react-dom/client',
-        // Stub CSS imports
+        '^react$': '<rootDir>/frontend/node_modules/react',
+        '^react/jsx-runtime$': '<rootDir>/frontend/node_modules/react/jsx-runtime',
+        '^react-dom$': '<rootDir>/frontend/node_modules/react-dom',
+        '^react-dom/client$': '<rootDir>/frontend/node_modules/react-dom/client',
         '\\.(css|less|scss|sass)$': '<rootDir>/scripts/__mocks__/styleMock.cjs',
       },
     },
@@ -41,10 +38,9 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'html'],
   collectCoverageFrom: [
     'src/**/*.ts',
-    'webview-ui/src/**/*.{ts,tsx}',
+    'frontend/src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
-    '!src/extension.ts',
-    '!webview-ui/src/main.tsx',
+    '!frontend/src/main.tsx',
   ],
   coverageThreshold: {
     global: {

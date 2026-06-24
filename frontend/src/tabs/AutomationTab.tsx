@@ -72,8 +72,8 @@ export const AutomationTab = memo(function AutomationTab({ automation, isBusy, f
       <p className="helper-text">Run A–F automation analysis with feasibility, ROI, and layer-based prioritization.</p>
       <div className="button-row">
         <button type="button" onClick={onAnalyze} disabled={isBusy}>Analyze Automation Candidates</button>
-        <button type="button" onClick={onExportJson} disabled={!automation}>Export JSON</button>
-        <button type="button" onClick={onExportCsv} disabled={!automation}>Export CSV</button>
+        <button type="button" data-variant="secondary" onClick={onExportJson} disabled={!automation}>Export JSON</button>
+        <button type="button" data-variant="secondary" onClick={onExportCsv} disabled={!automation}>Export CSV</button>
       </div>
 
       {!automation ? (
