@@ -128,11 +128,11 @@ export const ScenariosTab = memo(function ScenariosTab({
 
       <div className="button-row">
         <button type="button" onClick={handleGenerate} disabled={isBusy}>Generate Scenarios</button>
-        <button type="button" onClick={onAddScenario} disabled={isBusy}>Add Scenario</button>
-        <button type="button" onClick={exportJson} disabled={!hasScenarios}>Export JSON</button>
-        <button type="button" onClick={exportCsv} disabled={!hasScenarios}>Export CSV</button>
+        <button type="button" data-variant="secondary" onClick={onAddScenario} disabled={isBusy}>+ Add Scenario</button>
+        <button type="button" data-variant="secondary" onClick={exportJson} disabled={!hasScenarios}>Export JSON</button>
+        <button type="button" data-variant="secondary" onClick={exportCsv} disabled={!hasScenarios}>Export CSV</button>
         {hasScenarios && (
-          <button type="button" onClick={allCollapsed ? expandAll : collapseAll}>
+          <button type="button" data-variant="ghost" onClick={allCollapsed ? expandAll : collapseAll}>
             {allCollapsed ? 'Expand All' : 'Collapse All'}
           </button>
         )}

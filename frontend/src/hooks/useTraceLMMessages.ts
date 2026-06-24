@@ -1,7 +1,7 @@
 // Web version: replaces vscode.postMessage / window.addEventListener transport with fetch calls.
 // All actions are async functions that call the Express API and update state directly.
 
-import { useCallback, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
 import {
   type Settings,
   type ParsedFile,
@@ -23,7 +23,6 @@ type Refs = {
   requirementTextRef: MutableRefObject<string>;
   enhancementRef: MutableRefObject<RequirementEnhancement>;
   scenariosRef: MutableRefObject<ScenarioItem[]>;
-  lastGenIdRef: MutableRefObject<Record<string, string>>;
   settingsRef: MutableRefObject<Settings>;
   testCasesRef: MutableRefObject<TestCaseItem[]>;
   xrayPushedIssuesRef: MutableRefObject<XrayPushedIssue[]>;
@@ -51,6 +50,12 @@ type Setters = {
   onEnhancementReceived?: () => void;
   onScenariosReceived?: () => void;
   onChainSettled?: () => void;
+  // BUG-8: called after Generate All completes so App can navigate to the results tab.
+  onGenerateAllDone?: () => void;
+  // Called when Generate All fails so the UI can show a contextual retry button
+  // with the exact error message.
+  // stepKey: 'enhancement+scenarios' | 'testCases' | 'automation'
+  onGenerateAllFailed?: (stepKey: string, errorMessage: string) => void;
 };
 
 export type TraceLMActions = {
@@ -64,6 +69,8 @@ export type TraceLMActions = {
   generateAll: () => void;
   generateScenarios: () => void;
   generateTestCases: () => void;
+  // BUG-2 fix: dedicated action so Automation tab doesn't re-run test case generation.
+  generateAutomationAnalysis: () => void;
   pushTestCasesToXray: () => void;
   retryFailedPushes: () => void;
   previewXrayPush: () => void;
@@ -80,20 +87,33 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     setEnhancement, setScenarios, setTestCases,
     setXrayPushedIssues, setAutomation,
     setXrayPushPreview, setXrayPushProgress, setGenerationProgress,
-    onEnhancementReceived, onScenariosReceived, onChainSettled,
+    onEnhancementReceived, onScenariosReceived, onChainSettled, onGenerateAllDone, onGenerateAllFailed,
   } = params;
+
+  // Index aligns with generateAllStepRef: 1=Phase1(parallel), 2=Test Cases, 3=Automation
+  const STEP_NAMES = ['', 'Phase 1 (Enhancement + Scenarios)', 'Test Cases', 'Automation Analysis'];
+
+  const STEP_KEY_MAP: Record<number, string> = {
+    1: 'enhancement+scenarios',
+    2: 'testCases',
+    3: 'automation',
+  };
 
   const handleError = useCallback((err: unknown, context?: string): void => {
     setIsBusy(false);
+    const message = err instanceof Error ? err.message : 'Unknown error.';
     if (generateAllStepRef.current > 0) {
+      const stepName = STEP_NAMES[generateAllStepRef.current] ?? `Step ${generateAllStepRef.current}`;
+      const stepKey = STEP_KEY_MAP[generateAllStepRef.current] ?? '';
       generateAllStepRef.current = 0;
       onChainSettled?.();
       setGenerationProgress('');
-      setFeedback(`Generate All stopped: ${err instanceof Error ? err.message : 'Unknown error.'}`);
+      onGenerateAllFailed?.(stepKey, message);
+      setFeedback(`Generate All stopped at ${stepName}: ${message}`);
     } else {
-      setFeedback(`${context ? `${context}: ` : ''}${err instanceof Error ? err.message : 'Unknown error.'}`);
+      setFeedback(`${context ? `${context}: ` : ''}${message}`);
     }
-  }, [setIsBusy, setFeedback, setGenerationProgress, generateAllStepRef, onChainSettled]);
+  }, [setIsBusy, setFeedback, setGenerationProgress, generateAllStepRef, onChainSettled, onGenerateAllFailed]);
 
   // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -118,14 +138,16 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     }).catch((err: unknown) => handleError(err, 'LLM test'));
   }, [settingsRef, setIsBusy, setFeedback, setStatus, handleError]);
 
+  // BUG-7 fix: update navbar status dot when Jira test succeeds, same as testLlm.
   const testJira = useCallback((): void => {
     setIsBusy(true);
-    setFeedback('Validating Jira/Xray settings...');
-    void api.testJira(settingsRef.current).then(({ message }) => {
+    setFeedback('Testing Jira connectivity...');
+    void api.testJira(settingsRef.current).then(({ ok, message }) => {
       setIsBusy(false);
       setFeedback(`Jira/Xray: ${message}`);
+      if (ok) setStatus('Jira connected');
     }).catch((err: unknown) => handleError(err, 'Jira test'));
-  }, [settingsRef, setIsBusy, setFeedback, handleError]);
+  }, [settingsRef, setIsBusy, setFeedback, setStatus, handleError]);
 
   // ── Files ───────────────────────────────────────────────────────────────────
 
@@ -173,7 +195,11 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   // ── Generation ──────────────────────────────────────────────────────────────
 
   const runEnhancement = useCallback(async (requirements: string): Promise<RequirementEnhancement> => {
-    const { enhancement: raw } = await api.generateEnhancement(requirements, settingsRef.current);
+    const { enhancement: raw } = await api.streamEnhancement(
+      requirements,
+      settingsRef.current,
+      (e) => { if (e.type === 'chunk') setFeedback(`Enhancing requirements... (${e.chars.toLocaleString()} chars)`); },
+    );
     const normalized = { ...emptyEnhancement, ...(raw as Partial<RequirementEnhancement>) };
     setEnhancement(normalized);
     enhancementRef.current = normalized;
@@ -182,8 +208,15 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     return normalized;
   }, [settingsRef, enhancementRef, setEnhancement, onEnhancementReceived, setFeedback]);
 
-  const runScenarios = useCallback(async (requirements: string, enhancement: RequirementEnhancement): Promise<ScenarioItem[]> => {
-    const { scenarios: raw } = await api.generateScenarios(requirements, enhancement, settingsRef.current);
+  // Enhancement is optional — when running in parallel with enhancement (Generate All DAG),
+  // scenarios starts from requirements alone. The prompt handles the absent enhancement case.
+  const runScenarios = useCallback(async (requirements: string, enhancement?: RequirementEnhancement): Promise<ScenarioItem[]> => {
+    const { scenarios: raw } = await api.streamScenarios(
+      requirements,
+      enhancement ?? null,
+      settingsRef.current,
+      (e) => { if (e.type === 'chunk') setFeedback(`Generating scenarios... (${e.chars.toLocaleString()} chars)`); },
+    );
     const parsed = (raw as ScenarioItem[]) ?? [];
     setScenarios(parsed);
     scenariosRef.current = parsed;
@@ -193,7 +226,11 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   }, [settingsRef, scenariosRef, setScenarios, onScenariosReceived, setFeedback]);
 
   const runTestCases = useCallback(async (scenarios: ScenarioItem[]): Promise<TestCaseItem[]> => {
-    const { testCases: raw } = await api.generateTestCases(scenarios, settingsRef.current);
+    const { testCases: raw } = await api.streamTestCases(
+      scenarios,
+      settingsRef.current,
+      (e) => { if (e.type === 'chunk') setFeedback(`Generating test cases... (${e.chars.toLocaleString()} chars)`); },
+    );
     const parsed = (raw as TestCaseItem[]) ?? [];
     setTestCases(parsed);
     setXrayPushedIssues([]);
@@ -202,7 +239,20 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   }, [settingsRef, setTestCases, setXrayPushedIssues, setFeedback]);
 
   const runAutomation = useCallback(async (requirements: string, enhancement: RequirementEnhancement, scenarios: ScenarioItem[], testCases: TestCaseItem[]): Promise<void> => {
-    const { analysis: raw } = await api.generateAutomation(requirements, enhancement, scenarios, testCases, settingsRef.current);
+    const { analysis: raw } = await api.streamAutomation(
+      requirements,
+      enhancement,
+      scenarios,
+      testCases,
+      settingsRef.current,
+      (event) => {
+        if (event.type === 'batch') {
+          setFeedback(`Analyzing automation candidates... (batch ${event.current} of ${event.total})`);
+        } else {
+          setFeedback(`Analyzing automation candidates... (${event.chars.toLocaleString()} chars)`);
+        }
+      },
+    );
     setAutomation(raw as AutomationAnalysis);
     setFeedback('Automation analysis completed.');
   }, [settingsRef, setAutomation, setFeedback]);
@@ -228,38 +278,98 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     void runTestCases(scenariosRef.current).then(() => setIsBusy(false)).catch((err: unknown) => handleError(err, 'Test Cases'));
   }, [scenariosRef, setIsBusy, setFeedback, runTestCases, handleError]);
 
-  // Generate All — sequential await instead of chained postMessages
+  // BUG-2 fix: dedicated action for the Automation tab that uses current state, never re-runs test cases.
+  const generateAutomationAnalysis = useCallback((): void => {
+    if (!testCasesRef.current.length) { setFeedback('Generate test cases first.'); return; }
+    setIsBusy(true);
+    setFeedback('Analyzing automation candidates...');
+    void runAutomation(
+      requirementTextRef.current,
+      enhancementRef.current,
+      scenariosRef.current,
+      testCasesRef.current
+    ).then(() => setIsBusy(false)).catch((err: unknown) => handleError(err, 'Automation analysis'));
+  }, [testCasesRef, requirementTextRef, enhancementRef, scenariosRef, setIsBusy, setFeedback, runAutomation, handleError]);
+
+  // ── Generate All — DAG-aware parallel execution ──────────────────────────────
+  //
+  // Dependency graph:
+  //   Phase 1 (parallel): Enhancement + Scenarios — both need only requirements
+  //   Phase 2 (sequential): Test Cases — needs Scenarios output
+  //   Phase 3 (sequential): Automation — needs Test Cases + Enhancement (receives both)
+  //
+  // Enhancement is optional for Scenarios (prompt handles absent case), so both
+  // can race from the same starting gun. Automation still receives full Enhancement
+  // context, preserving output quality where it matters most.
   const generateAll = useCallback((): void => {
     if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before generation.'); return; }
     setIsBusy(true);
     generateAllStepRef.current = 1;
+    const requirements = requirementTextRef.current;
 
     void (async () => {
       try {
-        setGenerationProgress('Requirement Enhancement (1/4)...');
-        setFeedback('Generating all artifacts sequentially...');
-        const enhancement = await runEnhancement(requirementTextRef.current);
+        // ── Phase 1: Enhancement ∥ Scenarios ────────────────────────────────
+        setGenerationProgress('phase1');
+        setFeedback('Phase 1 of 3: Enhancement + Scenarios running in parallel...');
+        // Each stream reports its own cumulative char count. Track them separately
+        // and sum for the feedback label so the two callbacks don't overwrite each other.
+        let enhChars = 0;
+        let scnChars = 0;
+        const updatePhase1 = (): void => {
+          const total = enhChars + scnChars;
+          if (total > 0) setFeedback(`Phase 1 of 3: Enhancement + Scenarios running in parallel... (${total.toLocaleString()} chars)`);
+        };
 
-        generateAllStepRef.current = 2;
-        setGenerationProgress('Test Scenarios (2/4)...');
-        const scenarios = await runScenarios(requirementTextRef.current, enhancement);
+        const [enhancement, scenarios] = await Promise.all([
+          (async () => {
+            const { enhancement: raw } = await api.streamEnhancement(
+              requirements,
+              settingsRef.current,
+              (e) => { if (e.type === 'chunk') { enhChars = e.chars; updatePhase1(); } },
+            );
+            const normalized = { ...emptyEnhancement, ...(raw as Partial<RequirementEnhancement>) };
+            setEnhancement(normalized);
+            enhancementRef.current = normalized;
+            onEnhancementReceived?.();
+            return normalized;
+          })(),
+          (async () => {
+            const { scenarios: raw } = await api.streamScenarios(
+              requirements,
+              null,
+              settingsRef.current,
+              (e) => { if (e.type === 'chunk') { scnChars = e.chars; updatePhase1(); } },
+            );
+            const parsed = (raw as ScenarioItem[]) ?? [];
+            setScenarios(parsed);
+            scenariosRef.current = parsed;
+            onScenariosReceived?.();
+            return parsed;
+          })(),
+        ]);
 
         if (scenarios.length === 0) throw new Error('Scenario generation returned no results. Please try again.');
 
-        generateAllStepRef.current = 3;
-        setGenerationProgress('Test Cases (3/4)...');
+        // ── Phase 2: Test Cases ──────────────────────────────────────────────
+        generateAllStepRef.current = 2;
+        setGenerationProgress('phase2');
+        setFeedback('Phase 2 of 3: Generating test cases from scenarios...');
         const testCases = await runTestCases(scenarios);
 
         if (testCases.length === 0) throw new Error('Test case generation returned no results. Please try again.');
 
-        generateAllStepRef.current = 4;
-        setGenerationProgress('Automation Analysis (4/4)...');
-        await runAutomation(requirementTextRef.current, enhancement, scenarios, testCases);
+        // ── Phase 3: Automation Analysis ─────────────────────────────────────
+        generateAllStepRef.current = 3;
+        setGenerationProgress('phase3');
+        setFeedback('Phase 3 of 3: Analyzing automation candidates...');
+        await runAutomation(requirements, enhancement, scenarios, testCases);
 
         generateAllStepRef.current = 0;
         onChainSettled?.();
         setGenerationProgress('done');
         setFeedback('All artifacts generated successfully.');
+        onGenerateAllDone?.();
         setTimeout(() => setGenerationProgress(''), 2000);
       } catch (err) {
         handleError(err);
@@ -267,7 +377,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         setIsBusy(false);
       }
     })();
-  }, [requirementTextRef, generateAllStepRef, setIsBusy, setFeedback, setGenerationProgress, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, handleError]);
+  }, [requirementTextRef, generateAllStepRef, setIsBusy, setFeedback, setGenerationProgress, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, handleError]);
 
   // ── Xray ────────────────────────────────────────────────────────────────────
 
@@ -339,30 +449,28 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     }).catch((err: unknown) => handleError(err, 'Clear history'));
   }, [setIsBusy, setFeedback, setXrayPushedIssues, handleError]);
 
-  // Load settings from localStorage on mount
-  const _loadSavedSettings = useCallback(() => {
+  // BUG-1 fix: actually run the settings restore on mount via useEffect instead of a dead void expression.
+  useEffect(() => {
     try {
       const saved = localStorage.getItem('tracelms-settings');
       if (saved) {
         const parsed = JSON.parse(saved) as Settings;
         setSettings(parsed);
-        setStatus('TraceLMs Cloud ready.');
+        setStatus('Settings restored. Ready.');
       } else {
         setStatus('TraceLMs Cloud ready. Configure your settings to begin.');
       }
     } catch {
       setStatus('TraceLMs Cloud ready.');
     }
-  }, [setSettings, setStatus]);
-
-  // Auto-load settings on first render
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  void _loadSavedSettings;
+  }, []); // run once on mount
 
   return {
     saveSettings, testLlm, testJira,
     parseSelectedFiles, searchStories, pullFromJira,
     generateEnhancement, generateAll, generateScenarios, generateTestCases,
+    generateAutomationAnalysis,
     pushTestCasesToXray, retryFailedPushes, previewXrayPush, clearXrayHistory,
   };
 }

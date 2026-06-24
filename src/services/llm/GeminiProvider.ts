@@ -1,14 +1,10 @@
 import { LLMRequest, LLMResponse, StreamChunkHandler } from '../../types';
 import { LLMProvider } from './LLMProvider';
+import { estimateTimeoutMs } from './timeoutUtil';
+import { makeIdleTimeout } from '../../utils/idleTimeout';
 
 export class GeminiProvider implements LLMProvider {
   constructor(private readonly apiKey: string) {}
-
-  private static getTimeoutMs(model: string): number {
-    // Thinking models (2.5+, pro) need more headroom than the 180s used for 2.0-flash.
-    if (/2\.5|2-5|-pro/i.test(model)) return 300_000;
-    return 180_000;
-  }
 
   private static buildRequestBody(
     model: string,
@@ -19,8 +15,7 @@ export class GeminiProvider implements LLMProvider {
     // can produce large outputs; truncation causes silent JSON parse failures.
     // thinkingConfig and systemInstruction are NOT available via the Gemini REST
     // API (v1/v1beta generateContent) — both are SDK-only. Prompt concatenation
-    // is used instead; prompt files no longer contain unfilled template placeholders
-    // so concatenation no longer causes instruction/data confusion.
+    // is used instead.
     void model;
     return {
       contents: [{ parts: [{ text: prompt }] }],
@@ -152,6 +147,7 @@ export class GeminiProvider implements LLMProvider {
     prompt: string,
     temperature: number,
     maxRetries: number,
+    timeoutMs: number,
     signal?: AbortSignal
   ): Promise<{
     text: string;
@@ -168,7 +164,7 @@ export class GeminiProvider implements LLMProvider {
     for (const endpoint of endpointCandidates) {
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         if (signal?.aborted) {
-          throw new Error(`Gemini request timed out after ${GeminiProvider.getTimeoutMs(model) / 1000} seconds.`);
+          throw new Error(`Gemini request timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
         }
         let response: Response;
         try {
@@ -182,7 +178,7 @@ export class GeminiProvider implements LLMProvider {
           });
         } catch (err) {
           if ((err as Error).name === 'AbortError') {
-            throw new Error(`Gemini request timed out after ${GeminiProvider.getTimeoutMs(model) / 1000} seconds.`);
+            throw new Error(`Gemini request timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
           }
           throw err;
         }
@@ -251,18 +247,16 @@ export class GeminiProvider implements LLMProvider {
 
     // Concatenate system + user prompts. The Gemini REST API (v1/v1beta generateContent)
     // does not support systemInstruction or thinkingConfig — both are SDK-only.
-    // Prompt files no longer use {{placeholder}} syntax so concatenation works cleanly.
     const prompt = request.systemPrompt
       ? `${request.systemPrompt}\n\n${request.prompt}`
       : request.prompt;
 
-    // One controller governs every fetch inside this call — main request,
-    // retries, fallbacks, and model listing — so nothing can outlive the ceiling.
+    // Dynamic timeout: scales with estimated token count so large documents
+    // don't hit a wall-clock ceiling that was sized for small inputs.
+    const timeoutMs = estimateTimeoutMs(prompt, model, 'gemini');
+
     const globalController = new AbortController();
-    const globalTimer = setTimeout(
-      () => globalController.abort(),
-      GeminiProvider.getTimeoutMs(model)
-    );
+    const globalTimer = setTimeout(() => globalController.abort(), timeoutMs);
 
     try {
       const primaryResult = await this.completeWithModel(
@@ -270,6 +264,7 @@ export class GeminiProvider implements LLMProvider {
         prompt,
         request.temperature ?? 0.2,
         this.transientRetryCount,
+        timeoutMs,
         globalController.signal
       );
 
@@ -287,6 +282,7 @@ export class GeminiProvider implements LLMProvider {
             prompt,
             request.temperature ?? 0.2,
             this.fallbackRetryCount,
+            timeoutMs,
             globalController.signal
           );
 
@@ -321,8 +317,98 @@ export class GeminiProvider implements LLMProvider {
   }
 
   public async stream(request: LLMRequest, onChunk: StreamChunkHandler): Promise<LLMResponse> {
-    const result = await this.complete(request);
-    onChunk(result.text);
-    return result;
+    if (!this.apiKey) throw new Error('Gemini API key is missing.');
+
+    const model = this.normalizeModel(request.model);
+    const prompt = request.systemPrompt
+      ? `${request.systemPrompt}\n\n${request.prompt}`
+      : request.prompt;
+
+    // Option 2 — idle timeout: abort only if no chunk arrives for IDLE_MS.
+    // A wall-clock timeout is wrong for streaming because it fires based on
+    // total elapsed time, killing healthy streams that happen to be large.
+    // 45 seconds of silence means the LLM or connection is genuinely hung.
+    const IDLE_MS = 300_000;
+    const { signal, touch, cancel } = makeIdleTimeout(IDLE_MS);
+
+    const endpoints = [
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?key=${encodeURIComponent(this.apiKey)}&alt=sse`,
+      `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:streamGenerateContent?key=${encodeURIComponent(this.apiKey)}&alt=sse`,
+    ];
+
+    let response: Response | null = null;
+    let lastStreamStatus = 0;
+    let lastStreamDetail = '';
+    for (const endpoint of endpoints) {
+      try {
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(GeminiProvider.buildRequestBody(model, prompt, request.temperature ?? 0.2)),
+          signal,
+        });
+        if (r.ok) { response = r; break; }
+        lastStreamStatus = r.status;
+        lastStreamDetail = await this.parseErrorDetail(r);
+        console.error(`[stream] Gemini ${model} endpoint non-OK: ${r.status}${lastStreamDetail ? ` — ${lastStreamDetail}` : ''}`);
+        // Rate limit — no point hitting complete(), it will also fail
+        if (r.status === 429) {
+          cancel();
+          throw new Error(`Gemini rate limit exceeded (429)${lastStreamDetail ? `: ${lastStreamDetail}` : '. Wait a minute and retry.'}`);
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') break; // idle timeout before first byte
+        throw err; // re-throw 429 and other explicit errors
+      }
+    }
+
+    // Streaming endpoint unavailable — fall back to complete() only for non-rate-limit failures
+    if (!response) {
+      cancel();
+      console.warn(`[stream] Gemini streaming unavailable (last status: ${lastStreamStatus}), falling back to complete()`);
+      const result = await this.complete(request);
+      onChunk(result.text);
+      return result;
+    }
+
+    let fullText = '';
+    try {
+      const { parseSseLines } = await import('../../utils/sseReader');
+      for await (const line of parseSseLines(response)) {
+        const data = JSON.parse(line) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        const chunk = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (chunk) {
+          fullText += chunk;
+          onChunk(chunk);
+          touch(); // reset idle window — stream is alive
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        // Option 3 — idle timeout fired mid-stream.
+        // If we already received content, return it so the route can attempt
+        // JSON extraction on what arrived. Only fall back to complete() when
+        // the stream produced nothing at all.
+        cancel();
+        if (fullText) return { text: fullText };
+        const result = await this.complete(request);
+        onChunk(result.text);
+        return result;
+      }
+      throw err;
+    } finally {
+      cancel();
+    }
+
+    // Stream ended with no content — fall back to complete() with full retry logic
+    if (!fullText) {
+      const result = await this.complete(request);
+      onChunk(result.text);
+      return result;
+    }
+
+    return { text: fullText };
   }
 }

@@ -1,0 +1,19 @@
+I wanted to create an app using VS Code - Github Copilot and call it TraceLM. I wanted this app to be ready and can be integrated in JIRA-XRAY via MCP.
+
+App should have a integration with an LLM API for automated generation of Test Scenario and Test Cases. 
+
+FEATURES:  Focus on deriving test scenarios from requirements inputted by user and transforming scenarios into test cases.
+
+
+
+A particularly strong and modern choice is TraceLM:
+
+"Trace" reflects requirements traceability.
+"LM" connects it to Language Models.
+Short, memorable, and relevant to QA and AI.
+
+===================
+
+REQUIREMENT_REVIEW phase — Audit project against original requirements
+AUTOMATION_CANDIDATE_ASSISTANT phase — Identify automation/scripting opportunities
+Other development tasks — Any features, fixes, or improvements to TraceLM?

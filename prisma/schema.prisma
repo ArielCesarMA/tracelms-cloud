@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── App Settings ────────────────────────────────────────────────────────────
+// Single-row table for global connection settings (LLM, Jira, Xray).
+// Sensitive values (apiKey, jiraApiToken, xrayClientSecret) are
+// AES-256-GCM encrypted by the backend before being stored.
+
+model Settings {
+  id               String   @id @default("global")
+  llmProvider      String   @default("Gemini")
+  llmModel         String   @default("")
+  llmApiKeyEnc     String   @default("") // encrypted
+  jiraUrl          String   @default("")
+  jiraProjectKey   String   @default("")
+  jiraEmail        String   @default("")
+  jiraApiTokenEnc  String   @default("") // encrypted
+  xrayClientId     String   @default("")
+  xrayClientSecEnc String   @default("") // encrypted
+  xrayBatchSize    Int      @default(10)
+  xrayBatchDelayMs Int      @default(1000)
+  xrayMaxRetries   Int      @default(3)
+  updatedAt        DateTime @updatedAt
+}
+
+// ─── LLM Providers ───────────────────────────────────────────────────────────
+// Extensible provider registry. Built-in providers (Gemini, OpenAI, Anthropic,
+// Groq) are seeded. Users can add OpenAI-compatible providers via the UI.
+
+model LLMProvider {
+  id            String      @id @default(cuid())
+  name          String      @unique // e.g. "Groq", "Mistral"
+  displayLabel  String      // shown in dropdowns
+  baseUrl       String      // API endpoint base URL
+  authHeader    String      @default("Bearer") // "Bearer" | "x-api-key" | custom
+  apiKeyEnc     String      @default("") // encrypted; blank = use Settings.llmApiKeyEnc
+  compatibility String      @default("openai") // "openai" | "anthropic" | "gemini" | "custom"
+  isBuiltIn     Boolean     @default(false) // built-ins cannot be deleted
+  isActive      Boolean     @default(true)
+  models        LLMModel[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model LLMModel {
+  id           String      @id @default(cuid())
+  modelId      String      // e.g. "llama-3.3-70b-versatile"
+  displayLabel String      // shown in model dropdown
+  isDefault    Boolean     @default(false)
+  provider     LLMProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  providerId   String
+  createdAt    DateTime    @default(now())
+
+  @@unique([providerId, modelId])
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+// Each generation run belongs to a Project. Stakeholders are stored for
+// the future automated approval workflow.
+
+model Project {
+  id              String        @id @default(cuid())
+  name            String
+  key             String        @unique // e.g. "PGW" — mirrors Jira project key
+  description     String        @default("")
+  jiraProjectKey  String        @default("")
+  status          ProjectStatus @default(ACTIVE)
+  owner           String        @default("") // email of primary owner
+  stakeholders    Stakeholder[]
+  generations     Generation[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Stakeholder {
+  id        String   @id @default(cuid())
+  email     String
+  name      String   @default("")
+  role      String   @default("Reviewer") // e.g. "QA Lead", "Product Owner"
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, email])
+}
+
+// ─── Generations ─────────────────────────────────────────────────────────────
+// Stores the output of each "Generate All" run so nothing is lost on refresh.
+
+model Generation {
+  id               String           @id @default(cuid())
+  project          Project?         @relation(fields: [projectId], references: [id])
+  projectId        String?
+  requirementText  String           // raw requirement input
+  llmProvider      String
+  llmModel         String
+  status           GenerationStatus @default(COMPLETED)
+  enhancement      Json?            // RequirementEnhancement object
+  scenarios        Json?            // ScenarioItem[]
+  testCases        Json?            // TestCaseItem[]
+  automation       Json?            // AutomationAnalysis object
+  totalTestCases   Int              @default(0)
+  totalScenarios   Int              @default(0)
+  xrayPushStatus   String?          // null | "pending" | "pushed" | "failed"
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+enum GenerationStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+}

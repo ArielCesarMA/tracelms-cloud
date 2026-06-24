@@ -1,7 +1,13 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { JiraXrayService } from '../services/jira/JiraXrayService';
 
 export const jiraRouter = Router();
+
+// BUG-3 fix: wrap() propagates async errors to Express global error middleware.
+const wrap = (fn: (req: Request, res: Response, next: NextFunction) => Promise<void>) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    fn(req, res, next).catch(next);
+  };
 
 interface JiraSettings {
   jiraUrl: string;
@@ -17,7 +23,7 @@ function createService(s: JiraSettings): JiraXrayService {
 }
 
 // POST /api/jira/search
-jiraRouter.post('/search', async (req: Request, res: Response) => {
+jiraRouter.post('/search', wrap(async (req: Request, res: Response) => {
   const { query, settings } = req.body as { query: string; settings: JiraSettings };
   try {
     const service = createService(settings);
@@ -26,10 +32,10 @@ jiraRouter.post('/search', async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to search Jira stories.' });
   }
-});
+}));
 
 // POST /api/jira/pull
-jiraRouter.post('/pull', async (req: Request, res: Response) => {
+jiraRouter.post('/pull', wrap(async (req: Request, res: Response) => {
   const { mode, payload, settings } = req.body as {
     mode: string;
     payload: Record<string, string>;
@@ -38,7 +44,7 @@ jiraRouter.post('/pull', async (req: Request, res: Response) => {
 
   try {
     const service = createService(settings);
-    let issues;
+    let issues: Awaited<ReturnType<typeof service.getIssues>>;
 
     if (mode === 'single') {
       const key = payload?.singleIssueKey?.trim() ?? '';
@@ -63,4 +69,4 @@ jiraRouter.post('/pull', async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to pull Jira issues.' });
   }
-});
+}));

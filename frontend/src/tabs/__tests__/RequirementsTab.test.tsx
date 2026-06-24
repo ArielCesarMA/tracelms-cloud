@@ -22,6 +22,7 @@ const baseProps = {
   onRequirementTextChange: noop,
   onReviewedChange: noop,
   onGenerateAll: noop,
+  onClearAll: noop,
   onFileChange: noop,
   onParseFiles: noop,
   onJiraModeChange: noop,

@@ -34,12 +34,16 @@ export type UploadDraft = {
 export type JiraMode = 'single' | 'multiple' | 'epic' | 'multiStory';
 
 export type TabKey =
-  | 'settings'
   | 'requirements'
   | 'enhancement'
   | 'scenarios'
   | 'testCases'
-  | 'automation';
+  | 'automation'
+  | 'integrations'
+  | 'llm-providers'
+  | 'projects'
+  | 'output'
+  | 'guide';
 
 export type RequirementEnhancement = {
   missingFunctional: string[];
@@ -165,6 +169,13 @@ export const llmModelsByProvider: Record<string, string[]> = {
     'gemini-2.0-flash-001',
     'gemini-2.0-flash-lite',
     'gemini-2.0-flash-lite-001',
+  ],
+  Groq: [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'llama3-70b-8192',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
   ],
 };
 

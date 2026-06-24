@@ -1,10 +1,19 @@
-import { Router, Request, Response } from 'express';
-import { JiraXrayService } from '../services/jira/JiraXrayService';
+import { Router, Request, Response, NextFunction } from 'express';
+import { JiraXrayService, XrayManualTestCase } from '../services/jira/JiraXrayService';
 import { BatchProcessor, DEFAULT_BATCH_CONFIG } from '../services/jira/BatchProcessor';
 import { PushHistoryStore } from '../services/storage/PushHistoryStore';
 import { buildTestCaseFingerprint } from '../utils/fingerprintUtil';
 
+// Full test case shape: superset of both XrayManualTestCase and the fingerprinting subset.
+type PushableTestCase = XrayManualTestCase & { gherkin?: string; testData?: string; layer?: string };
+
 export const xrayRouter = Router();
+
+// BUG-3 fix: wrap() propagates async errors to Express global error middleware.
+const wrap = (fn: (req: Request, res: Response, next: NextFunction) => Promise<void>) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    fn(req, res, next).catch(next);
+  };
 
 const pushHistory = new PushHistoryStore();
 
@@ -21,9 +30,9 @@ interface XraySettings {
 }
 
 // POST /api/xray/push
-xrayRouter.post('/push', async (req: Request, res: Response) => {
+xrayRouter.post('/push', wrap(async (req: Request, res: Response) => {
   const { testCases, retryOnlyIds, settings } = req.body as {
-    testCases: Parameters<typeof buildTestCaseFingerprint>[0][];
+    testCases: PushableTestCase[];
     retryOnlyIds?: string[];
     settings: XraySettings;
   };
@@ -109,12 +118,12 @@ xrayRouter.post('/push', async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to push to Xray.' });
   }
-});
+}));
 
 // POST /api/xray/preview
-xrayRouter.post('/preview', async (req: Request, res: Response) => {
+xrayRouter.post('/preview', wrap(async (req: Request, res: Response) => {
   const { testCases, settings } = req.body as {
-    testCases: Parameters<typeof buildTestCaseFingerprint>[0][];
+    testCases: PushableTestCase[];
     settings: XraySettings;
   };
 
@@ -146,7 +155,7 @@ xrayRouter.post('/preview', async (req: Request, res: Response) => {
   }
 
   res.json({ preview });
-});
+}));
 
 // POST /api/xray/clear-history
 xrayRouter.post('/clear-history', (_req: Request, res: Response) => {
