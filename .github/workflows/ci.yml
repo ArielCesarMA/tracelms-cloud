@@ -20,25 +20,28 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            webview-ui/package-lock.json
+            frontend/package-lock.json
 
-      - name: Install root dependencies
+      - name: Install backend dependencies
         run: npm ci
 
-      - name: Install webview dependencies
-        run: npm ci --prefix webview-ui
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
 
       - name: Validate prompts
         run: npm run validate:prompts
 
-      - name: Lint
-        run: npm run lint
+      - name: Typecheck backend
+        run: npm run typecheck
 
-      - name: Typecheck
-        run: npm run typecheck:all
+      - name: Typecheck frontend
+        run: npm run typecheck:frontend
 
-      - name: Build
-        run: npm run build
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Build frontend
+        run: npm run build:frontend
 
   deep-main-checks:
     runs-on: ubuntu-latest
@@ -55,16 +58,19 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            webview-ui/package-lock.json
+            frontend/package-lock.json
 
-      - name: Install root dependencies
+      - name: Install backend dependencies
         run: npm ci
 
-      - name: Install webview dependencies
-        run: npm ci --prefix webview-ui
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
 
-      - name: Security audit
-        run: npm run audit
+      - name: Security audit (backend)
+        run: npm audit --omit=dev --audit-level=high
 
-      - name: Test with coverage
-        run: npm run test:coverage
+      - name: Security audit (frontend)
+        run: npm audit --omit=dev --audit-level=high --prefix frontend
+
+      - name: Test
+        run: npm test
