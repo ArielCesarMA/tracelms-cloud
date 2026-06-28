@@ -52,7 +52,7 @@ projectsRouter.get('/:id', wrap(async (req: Request, res: Response) => {
 // Create a project — Editor+ required (Viewers cannot create)
 projectsRouter.post('/', requireRole('OWNER', 'ADMIN', 'EDITOR'), wrap(async (req: Request, res: Response) => {
   const { userId, email } = (req as AuthenticatedRequest).user;
-  const { name, key, description } = req.body as { name: string; key: string; description?: string };
+  const { name, key, description, jiraProjectKey } = req.body as { name: string; key: string; description?: string; jiraProjectKey?: string };
 
   if (!name?.trim() || !key?.trim()) {
     res.status(400).json({ error: 'name and key are required.' });
@@ -74,6 +74,7 @@ projectsRouter.post('/', requireRole('OWNER', 'ADMIN', 'EDITOR'), wrap(async (re
       status: 'ACTIVE',
       owner: email,
       ownerId: userId,
+      ...(jiraProjectKey?.trim() ? { jiraProjectKey: jiraProjectKey.trim().toUpperCase() } : {}),
     },
     include: {
       members: true,
@@ -114,8 +115,8 @@ projectsRouter.patch('/:id', wrap(async (req: Request, res: Response) => {
   });
   if (!existing) { res.status(404).json({ error: 'Project not found.' }); return; }
 
-  const { name, description, status } = req.body as {
-    name?: string; description?: string; status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  const { name, description, status, jiraProjectKey } = req.body as {
+    name?: string; description?: string; status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; jiraProjectKey?: string;
   };
 
   const updated = await prisma.project.update({
@@ -124,6 +125,7 @@ projectsRouter.patch('/:id', wrap(async (req: Request, res: Response) => {
       ...(name !== undefined ? { name: name.trim() } : {}),
       ...(description !== undefined ? { description: description.trim() } : {}),
       ...(status !== undefined ? { status } : {}),
+      ...(jiraProjectKey !== undefined ? { jiraProjectKey: jiraProjectKey.trim().toUpperCase() } : {}),
     },
     include: {
       members: { select: { id: true, email: true, name: true, projectRole: true } },

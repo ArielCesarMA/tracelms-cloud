@@ -105,6 +105,9 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const [activeProjectName, setActiveProjectName] = useState<string | null>(
     () => localStorage.getItem('tracelms-active-project-name')
   );
+  const [activeProjectJiraKey, setActiveProjectJiraKey] = useState<string | null>(
+    () => localStorage.getItem('tracelms-active-project-jira-key')
+  );
 
   // ── Save-to-project state (Option C) ──────────────────────────────────────
   // After a generation is saved, show a confirmation banner.
@@ -138,6 +141,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const instructionTextRef = useRef(instructionText);
   const manualTextRef = useRef(manualText);
   const activeProjectIdRef = useRef(activeProjectId);
+  const activeProjectJiraKeyRef = useRef(activeProjectJiraKey);
 
   useEffect(() => { requirementTextRef.current = requirementText; }, [requirementText]);
   useEffect(() => { enhancementRef.current = enhancement; }, [enhancement]);
@@ -153,6 +157,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   useEffect(() => { instructionTextRef.current = instructionText; }, [instructionText]);
   useEffect(() => { manualTextRef.current = manualText; }, [manualText]);
   useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
+  useEffect(() => { activeProjectJiraKeyRef.current = activeProjectJiraKey; }, [activeProjectJiraKey]);
 
   // Sync requirementText payload whenever extracted requirements or instructions change.
   // Guard: only update when new-style state exists (preserves DB-restored legacy requirementText).
@@ -181,7 +186,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   } = useTraceLMMessages({
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
     settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, manualTextRef,
-    activeProjectIdRef,
+    activeProjectIdRef, activeProjectJiraKeyRef,
     setStatus, setFeedback, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
     setParsedFiles, setDocumentWarnings, setUploadedRequirements, setJiraRequirements,
@@ -452,13 +457,21 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     if (project) {
       setActiveProjectId(project.id);
       setActiveProjectName(project.name);
+      setActiveProjectJiraKey(project.jiraProjectKey ?? null);
       localStorage.setItem('tracelms-active-project-id', project.id);
       localStorage.setItem('tracelms-active-project-name', project.name);
+      if (project.jiraProjectKey) {
+        localStorage.setItem('tracelms-active-project-jira-key', project.jiraProjectKey);
+      } else {
+        localStorage.removeItem('tracelms-active-project-jira-key');
+      }
     } else {
       setActiveProjectId(null);
       setActiveProjectName(null);
+      setActiveProjectJiraKey(null);
       localStorage.removeItem('tracelms-active-project-id');
       localStorage.removeItem('tracelms-active-project-name');
+      localStorage.removeItem('tracelms-active-project-jira-key');
     }
   }, []);
 

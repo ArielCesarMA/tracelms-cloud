@@ -52,6 +52,7 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editJiraKey, setEditJiraKey] = useState('');
   const [editBusy, setEditBusy] = useState(false);
 
   // Approval chain state
@@ -199,14 +200,21 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
     setEditId(p.id);
     setEditName(p.name);
     setEditDesc(p.description);
+    setEditJiraKey(p.jiraProjectKey ?? '');
   };
 
   const handleEdit = async () => {
     if (!editId) return;
     setEditBusy(true);
     try {
-      const { project } = await updateProject(editId, { name: editName.trim(), description: editDesc.trim() });
-      setProjects((prev) => prev.map((p) => p.id === editId ? project as Project : p));
+      const { project } = await updateProject(editId, {
+        name: editName.trim(),
+        description: editDesc.trim(),
+        jiraProjectKey: editJiraKey.trim() || undefined,
+      });
+      const updated = project as Project;
+      setProjects((prev) => prev.map((p) => p.id === editId ? updated : p));
+      if (activeProjectId === editId) onProjectActivate(updated);
       setEditId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update project.');
@@ -447,6 +455,21 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
                   <div className="field-row">
                     <label>Description</label>
                     <textarea rows={4} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="proj-desc-textarea" />
+                  </div>
+                  <div className="field-row">
+                    <label htmlFor="editJiraKey">
+                      Jira Project Key
+                      <span className="helper-text" style={{ marginLeft: 'var(--space-2)', fontWeight: 'normal' }}>
+                        — overrides the org default for Xray pushes
+                      </span>
+                    </label>
+                    <input
+                      id="editJiraKey"
+                      type="text"
+                      placeholder="e.g. PROJ"
+                      value={editJiraKey}
+                      onChange={(e) => setEditJiraKey(e.target.value.toUpperCase())}
+                    />
                   </div>
                   <div className="button-row">
                     <button type="button" onClick={handleEdit} disabled={editBusy}>{editBusy ? 'Saving…' : 'Save'}</button>

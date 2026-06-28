@@ -32,6 +32,7 @@ type Refs = {
   uploadDraftsRef: MutableRefObject<UploadDraft[]>;
   manualTextRef: MutableRefObject<string>;
   activeProjectIdRef: MutableRefObject<string | null>;
+  activeProjectJiraKeyRef: MutableRefObject<string | null>;
 };
 
 type Setters = {
@@ -101,7 +102,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     setXrayPushedIssues, setAutomation,
     setXrayPushPreview, setXrayPushProgress, setGenerationProgress, setTokenUsage,
     onEnhancementReceived, onScenariosReceived, onChainSettled, onGenerateAllDone, onGenerateAllFailed,
-    onGenerationSaved, activeProjectIdRef,
+    onGenerationSaved, activeProjectIdRef, activeProjectJiraKeyRef,
   } = params;
 
   function mergeUsage(a: TokenUsage | undefined, b: TokenUsage | undefined): TokenUsage | undefined {
@@ -529,7 +530,10 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     setIsBusy(true);
     setXrayPushProgress(null);
     setFeedback('Pushing test cases to Xray...');
-    void api.pushToXray(testCasesRef.current, [], settingsRef.current).then(({ pushed }) => {
+    const xraySettings = activeProjectJiraKeyRef.current
+      ? { ...settingsRef.current, jiraProjectKey: activeProjectJiraKeyRef.current }
+      : settingsRef.current;
+    void api.pushToXray(testCasesRef.current, [], xraySettings).then(({ pushed }) => {
       setIsBusy(false);
       const statuses = (pushed as Array<{ localId: string; success: string; key: string; url: string; message: string; isValidationError?: boolean; errorClass?: string; fixPath?: string }>).map((item) => ({
         localId: item.localId,
@@ -550,7 +554,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       setXrayPushProgress(null);
       setFeedback(`Xray push complete: ${successCount} succeeded, ${statuses.length - successCount} failed.`);
     }).catch((err: unknown) => handleError(err, 'Xray push'));
-  }, [testCasesRef, settingsRef, setIsBusy, setFeedback, setXrayPushedIssues, setXrayPushProgress, handleError]);
+  }, [testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setXrayPushedIssues, setXrayPushProgress, handleError]);
 
   const retryFailedPushes = useCallback((): void => {
     const failedIds = xrayPushedIssuesRef.current.filter((i) => !i.success).map((i) => i.localId);
@@ -558,7 +562,10 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     setIsBusy(true);
     setXrayPushProgress(null);
     setFeedback(`Retrying ${failedIds.length} failed push(es)...`);
-    void api.pushToXray(testCasesRef.current, failedIds, settingsRef.current).then(({ pushed }) => {
+    const xraySettings = activeProjectJiraKeyRef.current
+      ? { ...settingsRef.current, jiraProjectKey: activeProjectJiraKeyRef.current }
+      : settingsRef.current;
+    void api.pushToXray(testCasesRef.current, failedIds, xraySettings).then(({ pushed }) => {
       setIsBusy(false);
       const statuses = (pushed as Array<{ localId: string; success: string; key: string; url: string; message: string; isValidationError?: boolean; errorClass?: string; fixPath?: string }>).map((item) => ({
         localId: item.localId, success: item.success === 'true', key: item.key, url: item.url, message: item.message,
@@ -574,19 +581,22 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       const successCount = statuses.filter((i) => i.success).length;
       setFeedback(`Retry complete: ${successCount} succeeded.`);
     }).catch((err: unknown) => handleError(err, 'Xray retry'));
-  }, [xrayPushedIssuesRef, testCasesRef, settingsRef, setIsBusy, setFeedback, setXrayPushedIssues, setXrayPushProgress, handleError]);
+  }, [xrayPushedIssuesRef, testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setXrayPushedIssues, setXrayPushProgress, handleError]);
 
   const previewXrayPush = useCallback((): void => {
     if (!testCasesRef.current.length) { setFeedback('Generate test cases first.'); return; }
     setIsBusy(true);
     setFeedback('Previewing Xray push...');
-    void api.previewXrayPush(testCasesRef.current, settingsRef.current).then(({ preview }) => {
+    const xraySettings = activeProjectJiraKeyRef.current
+      ? { ...settingsRef.current, jiraProjectKey: activeProjectJiraKeyRef.current }
+      : settingsRef.current;
+    void api.previewXrayPush(testCasesRef.current, xraySettings).then(({ preview }) => {
       setIsBusy(false);
       const p = preview as XrayPushPreview;
       setXrayPushPreview(p);
       setFeedback(`Preview ready: ${p.willPush} to push, ${p.duplicates} duplicates, ${p.validationErrors} validation errors.`);
     }).catch((err: unknown) => handleError(err, 'Xray preview'));
-  }, [testCasesRef, settingsRef, setIsBusy, setFeedback, setXrayPushPreview, handleError]);
+  }, [testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setXrayPushPreview, handleError]);
 
   const clearXrayHistory = useCallback((): void => {
     setIsBusy(true);
