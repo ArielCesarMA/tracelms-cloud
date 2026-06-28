@@ -27,19 +27,15 @@ import {
 import { downloadFile, escapeCsvCell, inferScenarioType, buildRequirementsPayload, resizeImageIfNeeded, ACCEPTED_IMAGE_MIMES, IMAGE_SIZE_LIMIT_BYTES } from './utils';
 import { useTraceLMMessages } from './hooks/useTraceLMMessages';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SettingsTab } from './tabs/SettingsTab';
 import { RequirementsTab } from './tabs/RequirementsTab';
 import { EnhancementTab } from './tabs/EnhancementTab';
 import { ScenariosTab } from './tabs/ScenariosTab';
 import { TestCasesTab } from './tabs/TestCasesTab';
 import { AutomationTab } from './tabs/AutomationTab';
-import { LLMProvidersTab } from './tabs/LLMProvidersTab';
 import { ProjectsTab } from './tabs/ProjectsTab';
 import { OutputTab } from './tabs/OutputTab';
 import { DocumentsTab } from './tabs/DocumentsTab';
-import { PromptsTab } from './tabs/PromptsTab';
 import { GuideTab } from './tabs/GuideTab';
-import { UsersTab } from './tabs/UsersTab';
 import { AdminPage } from './pages/AdminPage';
 
 // Auth wrapper — prevents AppInner from mounting (and running all its hooks)
@@ -527,18 +523,11 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     !jiraRequirements.length;
 
   const workspaceItems: { key: TabKey; label: string; icon: string }[] = [
-    { key: 'projects',   label: 'Projects',   icon: 'ti-folder' },
-    { key: 'prompts',    label: 'Prompts',    icon: 'ti-message-bolt' },
-    { key: 'output',     label: 'Output',     icon: 'ti-file-export' },
+    { key: 'projects', label: 'Projects', icon: 'ti-folder' },
+    { key: 'output',   label: 'Output',   icon: 'ti-file-export' },
   ];
 
-  const canManageUsers = userRole === 'OWNER' || userRole === 'ADMIN';
-
-  const utilityItems: { key: TabKey; label: string; icon: string }[] = [
-    ...(canManageUsers ? [{ key: 'users' as TabKey, label: 'Team', icon: 'ti-users' }] : []),
-    { key: 'llm-providers', label: 'LLM Providers', icon: 'ti-cpu' },
-    { key: 'integrations',  label: 'Settings',      icon: 'ti-settings' },
-  ];
+  const utilityItems: { key: TabKey; label: string; icon: string }[] = [];
 
   const isAdminRole = userRole === 'OWNER' || userRole === 'ADMIN';
 
@@ -921,26 +910,6 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
           </ErrorBoundary>
         )}
 
-        {activeTab === 'integrations' && (
-          <ErrorBoundary tabName="Integrations">
-            <SettingsTab
-              settings={settings}
-              availableModels={availableModels}
-              isBusy={isBusy}
-              feedback={feedback}
-              onFieldChange={updateSettingsField}
-              onSave={saveSettings}
-              onTestLlm={testLlm}
-              onTestJira={testJira}
-            />
-          </ErrorBoundary>
-        )}
-
-        {activeTab === 'llm-providers' && (
-          <ErrorBoundary tabName="LLM Providers">
-            <LLMProvidersTab />
-          </ErrorBoundary>
-        )}
 
         {activeTab === 'projects' && (
           <ErrorBoundary tabName="Projects">
@@ -964,11 +933,6 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
           </ErrorBoundary>
         )}
 
-        {activeTab === 'prompts' && (
-          <ErrorBoundary tabName="Prompts">
-            <PromptsTab activeProjectId={activeProjectId} activeProjectName={activeProjectName} />
-          </ErrorBoundary>
-        )}
 
         {activeTab === 'output' && (
           <ErrorBoundary tabName="Output">
@@ -976,14 +940,6 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
           </ErrorBoundary>
         )}
 
-        {activeTab === 'users' && authUser && (
-          <ErrorBoundary tabName="Team">
-            <UsersTab
-              currentUserId={authUser.id}
-              currentUserRole={(authUser.role ?? 'EDITOR') as import('./types').OrgRole}
-            />
-          </ErrorBoundary>
-        )}
 
         {activeTab === 'guide' && (
           <ErrorBoundary tabName="Guide">
@@ -995,7 +951,18 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
           <ErrorBoundary tabName="Administration">
             <AdminPage
               currentUserRole={(authUser.role ?? 'EDITOR') as import('./types').OrgRole}
+              currentUserId={authUser.id}
               onBack={() => nav('requirements')}
+              settings={settings}
+              availableModels={availableModels}
+              isBusy={isBusy}
+              feedback={feedback}
+              onFieldChange={updateSettingsField}
+              onSave={saveSettings}
+              onTestLlm={testLlm}
+              onTestJira={testJira}
+              activeProjectId={activeProjectId}
+              activeProjectName={activeProjectName}
             />
           </ErrorBoundary>
         )}

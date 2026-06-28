@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import type { OrgRole } from '../types';
+import type { OrgRole, Settings } from '../types';
+import { UsersTab }       from '../tabs/UsersTab';
+import { LLMProvidersTab } from '../tabs/LLMProvidersTab';
+import { PromptsTab }     from '../tabs/PromptsTab';
+import { SettingsTab }    from '../tabs/SettingsTab';
+import { ErrorBoundary }  from '../components/ErrorBoundary';
 
 // ─── Nav tree definition ──────────────────────────────────────────────────────
 
@@ -24,8 +29,8 @@ const NAV_GROUPS: AdminGroup[] = [
     label: 'People',
     icon: 'ti-users',
     items: [
-      { id: 'users',            label: 'Users',             icon: 'ti-user',            built: true  },
-      { id: 'roles',            label: 'Roles & Permissions', icon: 'ti-shield-lock',   built: false },
+      { id: 'users',             label: 'Users',              icon: 'ti-user',            built: true  },
+      { id: 'roles',             label: 'Roles & Permissions', icon: 'ti-shield-lock',    built: false },
     ],
   },
   {
@@ -33,9 +38,9 @@ const NAV_GROUPS: AdminGroup[] = [
     label: 'AI Configuration',
     icon: 'ti-brain',
     items: [
-      { id: 'prompts',          label: 'Prompts',           icon: 'ti-message-bolt',    built: true  },
-      { id: 'output-templates', label: 'Output Templates',  icon: 'ti-template',        built: false },
-      { id: 'llm-providers',   label: 'LLM Providers',     icon: 'ti-cpu',             built: true  },
+      { id: 'prompts',           label: 'Prompts',            icon: 'ti-message-bolt',    built: true  },
+      { id: 'output-templates',  label: 'Output Templates',   icon: 'ti-template',        built: false },
+      { id: 'llm-providers',    label: 'LLM Providers',      icon: 'ti-cpu',             built: true  },
     ],
   },
   {
@@ -43,9 +48,9 @@ const NAV_GROUPS: AdminGroup[] = [
     label: 'Integrations',
     icon: 'ti-plug',
     items: [
-      { id: 'jira',             label: 'Jira',              icon: 'ti-brand-atlassian', built: true  },
-      { id: 'azure-devops',     label: 'Azure DevOps',      icon: 'ti-brand-azure',     built: false },
-      { id: 'github',           label: 'GitHub',            icon: 'ti-brand-github',    built: false },
+      { id: 'jira',              label: 'Jira',               icon: 'ti-brand-atlassian', built: true  },
+      { id: 'azure-devops',      label: 'Azure DevOps',       icon: 'ti-brand-azure',     built: false },
+      { id: 'github',            label: 'GitHub',             icon: 'ti-brand-github',    built: false },
     ],
   },
   {
@@ -53,7 +58,7 @@ const NAV_GROUPS: AdminGroup[] = [
     label: 'Audit Logs',
     icon: 'ti-clipboard-list',
     items: [
-      { id: 'audit-logs',       label: 'Audit Logs',        icon: 'ti-clipboard-list',  built: false },
+      { id: 'audit-logs',        label: 'Audit Logs',         icon: 'ti-clipboard-list',  built: false },
     ],
   },
   {
@@ -62,19 +67,18 @@ const NAV_GROUPS: AdminGroup[] = [
     icon: 'ti-adjustments',
     ownerOnly: true,
     items: [
-      { id: 'sys-general',      label: 'General',           icon: 'ti-settings',        built: false },
-      { id: 'sys-security',     label: 'Security',          icon: 'ti-lock',            built: false },
-      { id: 'sys-notifications',label: 'Notifications',     icon: 'ti-bell',            built: false },
-      { id: 'sys-branding',     label: 'Branding',          icon: 'ti-palette',         built: false },
-      { id: 'sys-proj-defaults',label: 'Project Defaults',  icon: 'ti-folder-cog',      built: false },
-      { id: 'sys-numbering',    label: 'Numbering',         icon: 'ti-list-numbers',    built: false },
-      { id: 'sys-flags',        label: 'Feature Flags',     icon: 'ti-flag',            built: false },
-      { id: 'sys-backup',       label: 'Backup & Maintenance', icon: 'ti-database',     built: false },
+      { id: 'sys-general',       label: 'General',            icon: 'ti-settings',        built: false },
+      { id: 'sys-security',      label: 'Security',           icon: 'ti-lock',            built: false },
+      { id: 'sys-notifications', label: 'Notifications',      icon: 'ti-bell',            built: false },
+      { id: 'sys-branding',      label: 'Branding',           icon: 'ti-palette',         built: false },
+      { id: 'sys-proj-defaults', label: 'Project Defaults',   icon: 'ti-folder-cog',      built: false },
+      { id: 'sys-numbering',     label: 'Numbering',          icon: 'ti-list-numbers',    built: false },
+      { id: 'sys-flags',         label: 'Feature Flags',      icon: 'ti-flag',            built: false },
+      { id: 'sys-backup',        label: 'Backup & Maintenance', icon: 'ti-database',      built: false },
     ],
   },
 ];
 
-// Items visible to ADMIN (not Owner-only groups, not built-false items that are sensitive)
 const ADMIN_HIDDEN_GROUPS = new Set(['system']);
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -88,30 +92,6 @@ function ComingSoon({ label }: { label: string }): JSX.Element {
         This feature is on the roadmap and will be available in a future release.
       </p>
       <span className="admin-coming-soon-chip">Coming soon</span>
-    </div>
-  );
-}
-
-// ─── Placeholder redirect stubs for built items ───────────────────────────────
-
-function BuiltItemRedirect({ id, label }: { id: string; label: string }): JSX.Element {
-  const tabMap: Record<string, string> = {
-    'users':        'Team',
-    'prompts':      'Prompts',
-    'llm-providers':'LLM Providers',
-    'jira':         'Integrations',
-  };
-  const tabName = tabMap[id] ?? label;
-
-  return (
-    <div className="admin-redirect-stub">
-      <i className="ti ti-arrow-right admin-redirect-icon" aria-hidden="true" />
-      <h3 className="admin-coming-soon-title">{label}</h3>
-      <p className="admin-coming-soon-desc">
-        <strong>{tabName}</strong> is currently available in the main sidebar.
-        It will be fully migrated into this Administration panel in the next release.
-      </p>
-      <span className="admin-redirect-chip">Available in sidebar</span>
     </div>
   );
 }
@@ -132,7 +112,6 @@ function AdminNavGroup({
   const [open, setOpen] = useState(defaultOpen);
   const hasActive = group.items.some((i) => i.id === activeId);
 
-  // Force open when the active item is inside this group
   useEffect(() => { if (hasActive) setOpen(true); }, [hasActive]);
 
   return (
@@ -168,27 +147,96 @@ function AdminNavGroup({
   );
 }
 
-// ─── AdminPage ────────────────────────────────────────────────────────────────
+// ─── AdminPage props ──────────────────────────────────────────────────────────
 
 interface AdminPageProps {
   currentUserRole: OrgRole;
+  currentUserId: string;
   onBack: () => void;
+  // SettingsTab (Jira / Integrations)
+  settings: Settings;
+  availableModels: string[];
+  isBusy: boolean;
+  feedback: string;
+  onFieldChange: (key: keyof Settings, value: string) => void;
+  onSave: () => void;
+  onTestLlm: () => void;
+  onTestJira: () => void;
+  // PromptsTab
+  activeProjectId: string | null;
+  activeProjectName: string | null;
 }
 
-export function AdminPage({ currentUserRole, onBack }: AdminPageProps): JSX.Element {
+// ─── AdminPage ────────────────────────────────────────────────────────────────
+
+export function AdminPage({
+  currentUserRole,
+  currentUserId,
+  onBack,
+  settings,
+  availableModels,
+  isBusy,
+  feedback,
+  onFieldChange,
+  onSave,
+  onTestLlm,
+  onTestJira,
+  activeProjectId,
+  activeProjectName,
+}: AdminPageProps): JSX.Element {
   const isOwner = currentUserRole === 'OWNER';
 
   const visibleGroups = NAV_GROUPS.filter((g) =>
     isOwner ? true : !ADMIN_HIDDEN_GROUPS.has(g.id)
   );
 
-  // Default to first built item in first group
   const firstBuilt = visibleGroups.flatMap((g) => g.items).find((i) => i.built);
   const [activeId, setActiveId] = useState(firstBuilt?.id ?? 'users');
 
-  // Find the active item and group
-  const activeItem = visibleGroups.flatMap((g) => g.items).find((i) => i.id === activeId);
+  const activeItem  = visibleGroups.flatMap((g) => g.items).find((i) => i.id === activeId);
   const activeGroup = visibleGroups.find((g) => g.items.some((i) => i.id === activeId));
+
+  function renderContent(): JSX.Element {
+    if (!activeItem?.built) return <ComingSoon label={activeItem?.label ?? ''} />;
+
+    switch (activeId) {
+      case 'users':
+        return (
+          <ErrorBoundary tabName="Users">
+            <UsersTab currentUserId={currentUserId} currentUserRole={currentUserRole} />
+          </ErrorBoundary>
+        );
+      case 'llm-providers':
+        return (
+          <ErrorBoundary tabName="LLM Providers">
+            <LLMProvidersTab />
+          </ErrorBoundary>
+        );
+      case 'prompts':
+        return (
+          <ErrorBoundary tabName="Prompts">
+            <PromptsTab activeProjectId={activeProjectId} activeProjectName={activeProjectName} />
+          </ErrorBoundary>
+        );
+      case 'jira':
+        return (
+          <ErrorBoundary tabName="Integrations">
+            <SettingsTab
+              settings={settings}
+              availableModels={availableModels}
+              isBusy={isBusy}
+              feedback={feedback}
+              onFieldChange={onFieldChange}
+              onSave={onSave}
+              onTestLlm={onTestLlm}
+              onTestJira={onTestJira}
+            />
+          </ErrorBoundary>
+        );
+      default:
+        return <ComingSoon label={activeItem?.label ?? ''} />;
+    }
+  }
 
   return (
     <div className="admin-page">
@@ -215,7 +263,7 @@ export function AdminPage({ currentUserRole, onBack }: AdminPageProps): JSX.Elem
         </nav>
 
         <div className="admin-nav-footer">
-          <span className="admin-nav-role-badge admin-nav-role-badge--{currentUserRole.toLowerCase()}">
+          <span className={`admin-nav-role-badge admin-nav-role-badge--${currentUserRole.toLowerCase()}`}>
             {currentUserRole}
           </span>
         </div>
@@ -234,10 +282,7 @@ export function AdminPage({ currentUserRole, onBack }: AdminPageProps): JSX.Elem
         </div>
 
         <div className="admin-content-body">
-          {activeItem?.built
-            ? <BuiltItemRedirect id={activeId} label={activeItem.label} />
-            : <ComingSoon label={activeItem?.label ?? ''} />
-          }
+          {renderContent()}
         </div>
       </main>
     </div>
