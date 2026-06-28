@@ -7,6 +7,7 @@ const noop = jest.fn();
 const sampleTestCase: TestCaseItem = {
   id: 'TC-001',
   title: 'Verify login with valid credentials',
+  testType: 'Functional',
   scenarioId: 'SCN-001',
   requirementRefs: ['REQ-1'],
   gherkin: 'Feature: Login\n  Scenario: Valid login\n    Given a user exists\n    When they log in\n    Then they see the dashboard',
@@ -25,7 +26,9 @@ const baseProps = {
   xrayPushedIssues: [],
   isBusy: false,
   feedback: '',
+  generationId: null,
   onGenerateTestCases: noop,
+  onTestCasesChange: noop,
   onPreviewPush: noop,
   onPushToXray: noop,
   onRetryFailed: noop,

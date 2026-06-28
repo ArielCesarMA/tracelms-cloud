@@ -142,18 +142,30 @@ export class BatchProcessor {
     };
   }
 
-  private isRateLimitError(error: unknown): boolean {
-    if (!(error instanceof Error)) {
-      return false;
-    }
+  isTransientError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
     const msg = error.message.toLowerCase();
     return (
       msg.includes('429') ||
+      msg.includes('502') ||
       msg.includes('503') ||
+      msg.includes('504') ||
       msg.includes('rate limit') ||
       msg.includes('too many requests') ||
-      msg.includes('service unavailable')
+      msg.includes('service unavailable') ||
+      msg.includes('bad gateway') ||
+      msg.includes('gateway timeout') ||
+      msg.includes('econnreset') ||
+      msg.includes('etimedout') ||
+      msg.includes('enotfound') ||
+      msg.includes('econnrefused') ||
+      msg.includes('socket hang up') ||
+      msg.includes('network timeout')
     );
+  }
+
+  private isRateLimitError(error: unknown): boolean {
+    return this.isTransientError(error);
   }
 
   private delay(ms: number): Promise<void> {

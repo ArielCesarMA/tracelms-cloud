@@ -1,6 +1,8 @@
-import { memo } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import { Tip } from '../components/Tip';
-import { type Settings } from '../types';
+import { type Settings, type AuthUser, type OrgRole } from '../types';
+import { useAuth, isOwner, canManageUsers, ROLE_LABELS } from '../contexts/AuthContext';
+import { fetchUsers, updateUserRole, updateUserStatus } from '../api/client';
 
 type Props = {
   settings: Settings;
@@ -13,7 +15,54 @@ type Props = {
   onTestJira: () => void;
 };
 
-export const SettingsTab = memo(function SettingsTab({ settings, availableModels, isBusy, feedback, onFieldChange, onSave, onTestLlm, onTestJira }: Props): JSX.Element {
+const ORG_ROLES: OrgRole[] = ['OWNER', 'ADMIN', 'EDITOR', 'VIEWER'];
+
+export const SettingsTab = memo(function SettingsTab({
+  settings, availableModels, isBusy, feedback, onFieldChange, onSave, onTestLlm, onTestJira,
+}: Props): JSX.Element {
+  const { user: authUser } = useAuth();
+  const userRole = authUser?.role;
+  const showTeam = canManageUsers(userRole);
+
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState('');
+
+  const loadUsers = useCallback(async () => {
+    if (!showTeam) return;
+    setTeamLoading(true);
+    setTeamError('');
+    try {
+      const { users: list } = await fetchUsers();
+      setUsers(list);
+    } catch (e) {
+      setTeamError(e instanceof Error ? e.message : 'Failed to load users.');
+    } finally {
+      setTeamLoading(false);
+    }
+  }, [showTeam]);
+
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
+
+  const handleRoleChange = async (userId: string, role: OrgRole) => {
+    try {
+      const { user: updated } = await updateUserRole(userId, role);
+      setUsers((prev) => prev.map((u) => u.id === updated.id ? { ...u, role: updated.role } : u));
+    } catch (e) {
+      setTeamError(e instanceof Error ? e.message : 'Failed to update role.');
+    }
+  };
+
+  const handleStatusToggle = async (userId: string, currentlyActive: boolean) => {
+    try {
+      const { user: updated } = await updateUserStatus(userId, !currentlyActive);
+      setUsers((prev) => prev.map((u) => u.id === updated.id ? { ...u, isActive: updated.isActive } : u));
+    } catch (e) {
+      setTeamError(e instanceof Error ? e.message : 'Failed to update status.');
+    }
+  };
+
+  const isSelfOwner = isOwner(userRole);
 
   return (
     <section className="panel">
@@ -87,11 +136,94 @@ export const SettingsTab = memo(function SettingsTab({ settings, availableModels
       </div>
 
       <div className="button-row">
-        <button type="button" onClick={onSave} disabled={isBusy}>Save Settings</button>
+        <button type="button" onClick={onSave} disabled={isBusy || !isSelfOwner} title={!isSelfOwner ? 'Only the Owner can save global settings' : undefined}>
+          Save Settings
+        </button>
         <button type="button" data-variant="secondary" onClick={onTestLlm} disabled={isBusy}>Test LLM</button>
         <button type="button" data-variant="secondary" onClick={onTestJira} disabled={isBusy}>Test Jira / Xray</button>
       </div>
+      {!isSelfOwner && <p className="helper-text" style={{ marginTop: 4 }}>Settings are read-only — only the Owner can save changes.</p>}
       <p className="feedback">{feedback}</p>
+
+      {/* ── Team Management (Owner/Admin only) ──────────────────────────────── */}
+      {showTeam && (
+        <div className="settings-section team-section">
+          <p className="settings-section-title">Team</p>
+          <p className="helper-text">Manage user roles and access. Role changes take effect within 60 seconds without requiring re-login.</p>
+
+          {teamError && <p className="feedback feedback--error">{teamError}</p>}
+
+          {teamLoading ? (
+            <p className="helper-text">Loading team…</p>
+          ) : (
+            <table className="team-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Last Login</th>
+                  {isSelfOwner && <th>Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => {
+                  const isSelf = u.id === authUser?.id;
+                  const canChangeRole = isSelfOwner && !isSelf;
+                  const canToggleStatus = (isSelfOwner || (userRole === 'ADMIN' && u.role !== 'OWNER' && u.role !== 'ADMIN')) && !isSelf;
+
+                  return (
+                    <tr key={u.id} className={!u.isActive ? 'team-row--inactive' : ''}>
+                      <td>
+                        {u.email}
+                        {isSelf && <span className="team-you-chip">you</span>}
+                      </td>
+                      <td>
+                        {canChangeRole ? (
+                          <select
+                            className="team-role-select"
+                            value={u.role}
+                            onChange={(e) => void handleRoleChange(u.id, e.target.value as OrgRole)}
+                          >
+                            {ORG_ROLES.map((r) => (
+                              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className={`role-badge role-badge--${u.role.toLowerCase()}`}>{ROLE_LABELS[u.role]}</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={u.isActive ? 'team-status team-status--active' : 'team-status team-status--inactive'}>
+                          {u.isActive ? 'Active' : 'Deactivated'}
+                        </span>
+                      </td>
+                      <td className="team-lastlogin">
+                        {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : '—'}
+                      </td>
+                      {isSelfOwner && (
+                        <td>
+                          {canToggleStatus ? (
+                            <button
+                              type="button"
+                              className={`team-action-btn ${u.isActive ? 'team-action-btn--deactivate' : 'team-action-btn--activate'}`}
+                              onClick={() => void handleStatusToggle(u.id, u.isActive)}
+                            >
+                              {u.isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                          ) : (
+                            <span className="helper-text">—</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </section>
   );
 });

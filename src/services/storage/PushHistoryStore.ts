@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import prisma from '../../db/prisma';
 
 export type XrayPushRecord = {
   fingerprint: string;
@@ -8,72 +7,80 @@ export type XrayPushRecord = {
   pushedAt: string;
 };
 
-// BUG-5 fix: persist push history to a JSON file so server restarts don't lose dedup records.
-// The file is written synchronously on every put() to keep the logic simple and avoid
-// partial-write races. For multi-user or high-volume use, replace with SQLite/PostgreSQL.
-const HISTORY_FILE = path.join(process.cwd(), '.push-history.json');
-
-function loadFromDisk(): Record<string, XrayPushRecord> {
-  try {
-    if (fs.existsSync(HISTORY_FILE)) {
-      const raw = fs.readFileSync(HISTORY_FILE, 'utf8');
-      return JSON.parse(raw) as Record<string, XrayPushRecord>;
-    }
-  } catch {
-    console.warn('[PushHistoryStore] Could not load history file — starting fresh.');
-  }
-  return {};
-}
-
-function saveToDisk(store: Record<string, XrayPushRecord>): void {
-  try {
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(store, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[PushHistoryStore] Failed to persist history:', err);
-  }
-}
-
 export class PushHistoryStore {
-  private static readonly MAX_RECORDS = 5000;
-  private store: Record<string, XrayPushRecord> = loadFromDisk();
-
-  getAll(): Record<string, XrayPushRecord> {
-    return { ...this.store };
+  async get(fingerprint: string): Promise<XrayPushRecord | undefined> {
+    const record = await prisma.pushRecord.findUnique({ where: { fingerprint } });
+    if (!record) return undefined;
+    return {
+      fingerprint: record.fingerprint,
+      key: record.xrayKey,
+      url: record.xrayUrl,
+      pushedAt: record.pushedAt.toISOString(),
+    };
   }
 
-  get(fingerprint: string): XrayPushRecord | undefined {
-    return this.store[fingerprint];
+  async getAll(): Promise<Record<string, XrayPushRecord>> {
+    const records = await prisma.pushRecord.findMany();
+    return Object.fromEntries(
+      records.map((r) => [
+        r.fingerprint,
+        { fingerprint: r.fingerprint, key: r.xrayKey, url: r.xrayUrl, pushedAt: r.pushedAt.toISOString() },
+      ])
+    );
   }
 
-  put(fingerprint: string, record: XrayPushRecord): void {
-    this.store[fingerprint] = { ...record, pushedAt: record.pushedAt || new Date().toISOString() };
-    this.trim();
-    saveToDisk(this.store);
+  async put(fingerprint: string, record: XrayPushRecord): Promise<void> {
+    await prisma.pushRecord.upsert({
+      where: { fingerprint },
+      create: {
+        fingerprint,
+        xrayKey: record.key,
+        xrayUrl: record.url,
+        pushedAt: new Date(record.pushedAt || new Date()),
+      },
+      update: {
+        xrayKey: record.key,
+        xrayUrl: record.url,
+        pushedAt: new Date(record.pushedAt || new Date()),
+      },
+    });
   }
 
-  putBatch(records: Array<[string, XrayPushRecord]>): void {
-    for (const [fp, record] of records) {
-      this.store[fp] = { ...record, pushedAt: record.pushedAt || new Date().toISOString() };
-    }
-    this.trim();
-    saveToDisk(this.store);
+  async putBatch(records: Array<[string, XrayPushRecord]>): Promise<void> {
+    await prisma.$transaction(
+      records.map(([fp, r]) =>
+        prisma.pushRecord.upsert({
+          where: { fingerprint: fp },
+          create: {
+            fingerprint: fp,
+            xrayKey: r.key,
+            xrayUrl: r.url,
+            pushedAt: new Date(r.pushedAt || new Date()),
+          },
+          update: {
+            xrayKey: r.key,
+            xrayUrl: r.url,
+            pushedAt: new Date(r.pushedAt || new Date()),
+          },
+        })
+      )
+    );
   }
 
-  clear(): void {
-    this.store = {};
-    saveToDisk(this.store);
+  async clear(): Promise<void> {
+    await prisma.pushRecord.deleteMany({});
   }
 
-  getStats(): { totalRecords: number; oldestPush?: string; newestPush?: string } {
-    const records = Object.values(this.store);
-    if (records.length === 0) return { totalRecords: 0 };
-    const sorted = [...records].sort((a, b) => new Date(a.pushedAt).getTime() - new Date(b.pushedAt).getTime());
-    return { totalRecords: records.length, oldestPush: sorted[0].pushedAt, newestPush: sorted[sorted.length - 1].pushedAt };
-  }
-
-  private trim(): void {
-    if (Object.keys(this.store).length <= PushHistoryStore.MAX_RECORDS) return;
-    const sorted = Object.entries(this.store).sort(([, a], [, b]) => new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime());
-    this.store = Object.fromEntries(sorted.slice(0, PushHistoryStore.MAX_RECORDS));
+  async getStats(): Promise<{ totalRecords: number; oldestPush?: string; newestPush?: string }> {
+    const [totalRecords, oldest, newest] = await Promise.all([
+      prisma.pushRecord.count(),
+      prisma.pushRecord.findFirst({ orderBy: { pushedAt: 'asc' } }),
+      prisma.pushRecord.findFirst({ orderBy: { pushedAt: 'desc' } }),
+    ]);
+    return {
+      totalRecords,
+      oldestPush: oldest?.pushedAt.toISOString(),
+      newestPush: newest?.pushedAt.toISOString(),
+    };
   }
 }

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TraceLMs Cloud — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Design Tokens (mirrored from styles.css) ── */
+    :root {
+      --accent:          #0d9488;
+      --accent-hover:    #0f766e;
+      --accent-subtle:   rgba(13,148,136,0.10);
+      --accent-border:   rgba(13,148,136,0.30);
+      --bg-base:         #f0f8f7;
+      --bg-elevated:     #ffffff;
+      --border:          #d0e8e5;
+      --border-strong:   #a8d4cf;
+      --text-primary:    #0f1117;
+      --text-secondary:  #4b5563;
+      --text-muted:      #9ca3af;
+      --font:            'Inter', -apple-system, sans-serif;
+      --radius-sm:       4px;
+      --radius-md:       8px;
+      --radius-lg:       12px;
+      --radius-xl:       16px;
+      --shadow-md:       0 4px 6px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-xl:       0 20px 25px rgba(0,0,0,0.10), 0 10px 10px rgba(0,0,0,0.04);
+      --ease:            cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-base:        #0d0f14;
+        --bg-elevated:    #1a1e29;
+        --border:         #232736;
+        --border-strong:  #363b52;
+        --text-primary:   #f0f2f8;
+        --text-secondary: #9ba3b8;
+        --text-muted:     #596175;
+        --shadow-xl:      0 20px 25px rgba(0,0,0,0.5), 0 10px 10px rgba(0,0,0,0.3);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+    body {
+      font-family: var(--font);
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg-base);
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* ── Left panel — brand ── */
+    .brand-panel {
+      background: linear-gradient(145deg, #0f1a19 0%, #0d2420 50%, #0a1e1b 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 64px 56px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-panel::before {
+      content: '';
+      position: absolute;
+      top: -120px; right: -120px;
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(13,148,136,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .brand-panel::after {
+      content: '';
+      position: absolute;
+      bottom: -80px; left: -80px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(13,148,136,0.10) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 56px;
+    }
+
+    .brand-logo-icon {
+      width: 40px; height: 40px;
+      background: var(--accent);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-family: var(--font);
+      font-size: 26px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -1px;
+      box-shadow: 0 2px 8px rgba(13,148,136,0.4);
+      user-select: none;
+    }
+
+    .brand-logo-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-logo-name span {
+      color: var(--accent);
+    }
+
+    .brand-tagline-heading {
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+      margin-bottom: 20px;
+    }
+
+    .brand-tagline-heading em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    .brand-tagline-sub {
+      font-size: 15px;
+      font-weight: 400;
+      line-height: 1.65;
+      color: rgba(255,255,255,0.55);
+      max-width: 380px;
+      margin-bottom: 48px;
+    }
+
+    /* ── Feature pills ── */
+    .feature-pills {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .feature-pill {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+    }
+
+    .pill-icon {
+      width: 32px; height: 32px;
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 15px;
+    }
+
+    .pill-text {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.75);
+    }
+
+    /* ── Right panel — form ── */
+    .form-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 64px 48px;
+      background: var(--bg-base);
+    }
+
+    .form-card {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .form-header {
+      margin-bottom: 32px;
+    }
+
+    .form-header h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+      margin-bottom: 6px;
+    }
+
+    .form-header p {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ── Form fields ── */
+    .field {
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .field input {
+      width: 100%;
+      height: 40px;
+      padding: 0 12px;
+      font-family: var(--font);
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      outline: none;
+      transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease);
+    }
+
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-subtle);
+    }
+
+    .field input::placeholder { color: var(--text-muted); }
+
+    /* ── Field row — remember + forgot ── */
+    .field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .remember input[type="checkbox"] {
+      width: 15px; height: 15px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .forgot-link {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .forgot-link:hover { text-decoration: underline; }
+
+    /* ── Submit button ── */
+    .btn-primary {
+      width: 100%;
+      height: 42px;
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      border-radius: var(--radius-md);
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.1px;
+      cursor: pointer;
+      transition: background 150ms var(--ease), transform 100ms var(--ease), box-shadow 150ms var(--ease);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 1px 3px rgba(13,148,136,0.3);
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 4px 12px rgba(13,148,136,0.35);
+    }
+
+    .btn-primary:active { transform: translateY(1px); }
+
+    /* ── Divider ── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── SSO button ── */
+    .btn-sso {
+      width: 100%;
+      height: 40px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-sso:hover {
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow-md);
+    }
+
+    /* ── Footer note ── */
+    .form-footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .form-footer a {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ── Version badge ── */
+    .version-badge {
+      position: absolute;
+      bottom: 24px;
+      left: 56px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.3px;
+    }
+
+    .version-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      body { grid-template-columns: 1fr; }
+      .brand-panel { display: none; }
+      .form-panel { padding: 40px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Left: Brand Panel ── -->
+  <div class="brand-panel">
+    <div class="brand-logo">
+      <div class="brand-logo-icon" aria-hidden="true">T</div>
+      <span class="brand-logo-name">Trace<span>LMs</span> Cloud</span>
+    </div>
+
+    <h1 class="brand-tagline-heading">
+      AI-Powered<br/>
+      <em>Test Generation</em><br/>
+      from Requirements
+    </h1>
+
+    <p class="brand-tagline-sub">
+      Transform software requirements into Xray-ready test cases in minutes — with LLM-driven enhancement, scenario generation, automation analysis, and direct Jira/Xray integration.
+    </p>
+
+    <div class="feature-pills">
+      <div class="feature-pill">
+        <div class="pill-icon">⚡</div>
+        <span class="pill-text">5-step AI generation pipeline — requirements to test cases</span>
+      </div>
+      <div class="feature-pill">
+        <div class="pill-icon">🔗</div>
+        <span class="pill-text">Direct Jira fetch &amp; Xray push — no copy-paste</span>
+      </div>
+      <div class="feature-pill">
+        <div class="pill-icon">🤖</div>
+        <span class="pill-text">Bring your own LLM — connect any AI provider, switch without disruption</span>
+      </div>
+      <div class="feature-pill">
+        <div class="pill-icon">📄</div>
+        <span class="pill-text">Upload any requirement format — documents, spreadsheets, slides and more</span>
+      </div>
+      <div class="feature-pill">
+        <div class="pill-icon">✅</div>
+        <span class="pill-text">Built-in approval workflows — route test cases for review before Xray push</span>
+      </div>
+    </div>
+
+    <div class="version-badge">v0.1.0 — Generally Available</div>
+  </div>
+
+  <!-- ── Right: Login Form ── -->
+  <div class="form-panel">
+    <div class="form-card">
+
+      <div class="form-header">
+        <h2>Welcome back</h2>
+        <p>Sign in to your TraceLMs Cloud workspace</p>
+      </div>
+
+      <form>
+        <div class="field">
+          <label for="email">Work Email</label>
+          <input type="email" id="email" placeholder="you@company.com" autocomplete="email" />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="••••••••••••" autocomplete="current-password" />
+        </div>
+
+        <div class="field-row">
+          <label class="remember">
+            <input type="checkbox" /> Remember me
+          </label>
+          <a href="#" class="forgot-link">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Sign in
+        </button>
+      </form>
+
+      <div class="form-footer">
+        Don't have an account? <a href="#">Request access</a>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

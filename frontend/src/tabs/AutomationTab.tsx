@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { EmptyState } from '../components/EmptyState';
 import { type AutomationAnalysis, type AutomationCandidateItem } from '../types';
 
 type Props = {
@@ -77,12 +78,12 @@ export const AutomationTab = memo(function AutomationTab({ automation, isBusy, f
       </div>
 
       {!automation ? (
-        <div className="empty-state">
-          <span className="empty-state-icon">🤖</span>
-          <p className="empty-state-title">No Automation Analysis Yet</p>
-          <p className="empty-state-action">Click Analyze Automation Candidates above to start.</p>
-          <p className="empty-state-tip">Tip: Generate test cases first — analysis requires test case data.</p>
-        </div>
+        <EmptyState
+          icon="🤖"
+          title="No Automation Analysis Yet"
+          action="Click Analyze Automation Candidates above to start."
+          tip="Tip: Generate test cases first — analysis requires test case data."
+        />
       ) : (
         <>
           <p>{automation.summary}</p>

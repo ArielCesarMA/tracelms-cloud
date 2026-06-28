@@ -1,12 +1,28 @@
-import { memo, useMemo, useState, useCallback } from 'react';
-import { type JiraIssueSummary, type JiraMode, type ParsedFile, type UploadDraft } from '../types';
+import { memo, useMemo, useState, useCallback, useRef } from 'react';
+import {
+  type ExtractedRequirement,
+  type JiraIssueSummary,
+  type JiraMode,
+  type UploadDraft,
+} from '../types';
+import { VISION_CAPABLE_PROVIDERS } from '../utils';
 import { StepStepper } from '../components/StepStepper';
+import { RequirementTable } from '../components/RequirementTable';
+
+const ACCEPTED_EXTS = '.txt,.md,.docx,.pdf,.xlsx,.xls,.csv,.pptx,.png,.jpg,.jpeg,.webp';
+const MAX_REQUIREMENT_CHARS = 50_000;
+const WARN_THRESHOLD = 0.8;
 
 type Props = {
-  requirementText: string;
+  activeProjectId: string | null;
+  activeProjectName: string | null;
+  onGoToProjects: () => void;
+  uploadedRequirements: ExtractedRequirement[];
+  jiraRequirements: ExtractedRequirement[];
+  instructionText: string;
+  manualText: string;
   requirementsReviewed: boolean;
   generationProgress: string;
-  parsedFiles: ParsedFile[];
   uploadDrafts: UploadDraft[];
   jiraMode: JiraMode;
   singleIssueKey: string;
@@ -15,15 +31,22 @@ type Props = {
   storyQuery: string;
   storyOptions: JiraIssueSummary[];
   selectedStoryKeys: string[];
-  pulledIssues: JiraIssueSummary[];
   isBusy: boolean;
   feedback: string;
-  onRequirementTextChange: (text: string) => void;
+  selectedProvider: string;
+  onInstructionTextChange: (text: string) => void;
+  onManualTextChange: (text: string) => void;
   onReviewedChange: (reviewed: boolean) => void;
   onGenerateAll: () => void;
   onClearAll: () => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onParseFiles: () => void;
+  documentWarnings: string[];
+  onDismissWarnings: () => void;
+  onRequirementUpdate: (reqId: string, field: keyof ExtractedRequirement, value: string) => void;
+  onRequirementDelete: (reqId: string) => void;
+  onJiraRequirementUpdate: (reqId: string, field: keyof ExtractedRequirement, value: string) => void;
+  onJiraRequirementDelete: (reqId: string) => void;
   onJiraModeChange: (mode: JiraMode) => void;
   onSingleKeyChange: (key: string) => void;
   onMultipleKeysChange: (keys: string) => void;
@@ -35,33 +58,69 @@ type Props = {
 };
 
 export const RequirementsTab = memo(function RequirementsTab({
-  requirementText, requirementsReviewed, generationProgress,
-  parsedFiles, uploadDrafts, jiraMode, singleIssueKey, multipleIssueKeys,
+  activeProjectId, activeProjectName, onGoToProjects,
+  uploadedRequirements, jiraRequirements, instructionText, manualText,
+  requirementsReviewed, generationProgress,
+  uploadDrafts, jiraMode, singleIssueKey, multipleIssueKeys,
   epicKey, storyQuery, storyOptions, selectedStoryKeys,
-  pulledIssues, isBusy, feedback,
-  onRequirementTextChange, onReviewedChange, onGenerateAll, onClearAll,
-  onFileChange, onParseFiles, onJiraModeChange,
-  onSingleKeyChange, onMultipleKeysChange, onEpicKeyChange,
+  isBusy, feedback, selectedProvider,
+  onInstructionTextChange, onManualTextChange, onReviewedChange, onGenerateAll, onClearAll,
+  onFileChange, onParseFiles, documentWarnings, onDismissWarnings,
+  onRequirementUpdate, onRequirementDelete,
+  onJiraRequirementUpdate, onJiraRequirementDelete,
+  onJiraModeChange, onSingleKeyChange, onMultipleKeysChange, onEpicKeyChange,
   onStoryQueryChange, onSearchStories, onToggleStoryKey, onPullJira,
 }: Props): JSX.Element {
   const selectedStoryKeySet = useMemo(() => new Set(selectedStoryKeys), [selectedStoryKeys]);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [genContextOpen, setGenContextOpen] = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   const { activeStep, secondActiveStep } = useMemo(() => {
     if (generationProgress === 'done') return { activeStep: 5 };
     if (generationProgress === 'phase1') return { activeStep: 1, secondActiveStep: 2 };
     if (generationProgress === 'phase2') return { activeStep: 3 };
     if (generationProgress === 'phase3') return { activeStep: 4 };
-    const match = generationProgress.match(/\((\d)\/4\)/);
-    return match ? { activeStep: parseInt(match[1], 10) } : { activeStep: 0 };
+    return { activeStep: 0 };
   }, [generationProgress]);
 
   const handleClearRequest = useCallback(() => setConfirmingClear(true), []);
   const handleClearCancel  = useCallback(() => setConfirmingClear(false), []);
-  const handleClearConfirm = useCallback(() => {
-    setConfirmingClear(false);
-    onClearAll();
-  }, [onClearAll]);
+  const handleClearConfirm = useCallback(() => { setConfirmingClear(false); onClearAll(); }, [onClearAll]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const validExts = ACCEPTED_EXTS.split(',');
+    const files = Array.from(e.dataTransfer.files).filter((f) => {
+      const ext = `.${f.name.split('.').pop()?.toLowerCase() ?? ''}`;
+      return validExts.includes(ext);
+    });
+    if (!files.length) return;
+    // Synthesize a change event to reuse the existing handler
+    const dt = new DataTransfer();
+    files.forEach((f) => dt.items.add(f));
+    const input = document.createElement('input');
+    input.type = 'file';
+    Object.defineProperty(input, 'files', { value: dt.files });
+    onFileChange({ target: input } as unknown as React.ChangeEvent<HTMLInputElement>);
+  }, [onFileChange]);
+
+  const hasUploadInput = uploadDrafts.length > 0 || manualText.trim().length > 0;
+  const hasImageDrafts = uploadDrafts.some((d) => d.isImage && !d.sizeError);
+  const showVisionWarning = hasImageDrafts && !VISION_CAPABLE_PROVIDERS[selectedProvider.toLowerCase()];
+
+  const extractLabel = isBusy
+    ? (feedback.startsWith('Extracting') || feedback.startsWith('Analysing') ? 'Extracting…' : 'Parsing…')
+    : uploadedRequirements.length > 0
+    ? 'Re-extract'
+    : 'Extract Requirements';
+
+  const hasAnyRequirements = uploadedRequirements.length > 0 || jiraRequirements.length > 0 || manualText.trim().length > 0;
 
   return (
     <section className="panel">
@@ -71,31 +130,20 @@ export const RequirementsTab = memo(function RequirementsTab({
         <div className="requirements-page-title">
           <h2>Requirements</h2>
           <p className="helper-text">
-            Load requirements via any source below, confirm they are ready, then generate all artifacts.
+            Load requirements from files or Jira, review and edit the extracted table, then generate all artifacts.
           </p>
         </div>
 
-        {/* Top-right action zone */}
         <div className="req-header-actions">
-
-          {/* Clear All — destructive, ghost, with inline confirm guard */}
           {confirmingClear ? (
             <div className="req-clear-confirm">
               <span className="req-clear-confirm-label">
                 ⚠ This will remove all generated artifacts.
               </span>
-              <button
-                type="button"
-                className="req-clear-confirm-yes"
-                onClick={handleClearConfirm}
-              >
+              <button type="button" className="req-clear-confirm-yes" onClick={handleClearConfirm}>
                 Yes, clear
               </button>
-              <button
-                type="button"
-                className="req-clear-confirm-cancel"
-                onClick={handleClearCancel}
-              >
+              <button type="button" className="req-clear-confirm-cancel" onClick={handleClearCancel}>
                 Cancel
               </button>
             </div>
@@ -114,13 +162,7 @@ export const RequirementsTab = memo(function RequirementsTab({
             </button>
           )}
 
-          {/* Save & New — primary, placeholder until Projects are live */}
-          <button
-            type="button"
-            className="req-save-btn"
-            disabled
-            title="Save this generation run to a project — available when Projects are set up (coming soon)"
-          >
+          <button type="button" className="req-save-btn" disabled title="Save to a project — coming soon">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path d="M11.5 12.5h-9a1 1 0 0 1-1-1v-9l2-2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M4.5 12.5v-4h5v4M4.5 1.5v3h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -128,87 +170,206 @@ export const RequirementsTab = memo(function RequirementsTab({
             Save &amp; New
             <span className="req-save-badge">Soon</span>
           </button>
-
         </div>
       </div>
 
       <StepStepper activeStep={activeStep} secondActiveStep={secondActiveStep} />
 
-      {/* ── Section 1: Requirement Editor ──────────────────────────────────── */}
+      {/* ── Active project context indicator ─────────────────────────────────── */}
+      {activeProjectId ? (
+        <div className="req-project-indicator req-project-indicator--active" role="status">
+          <i className="ti ti-folder-filled" aria-hidden="true" />
+          <span>Active project: <strong>{activeProjectName}</strong> — generated artifacts will be saved here automatically.</span>
+        </div>
+      ) : (
+        <div className="req-project-indicator req-project-indicator--warn" role="status">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <span>No active project — generated artifacts won&apos;t be auto-saved.{' '}
+            <button className="link-btn" onClick={onGoToProjects}>Set an active project →</button>
+          </span>
+        </div>
+      )}
+
+      {/* ── Section 1: File Upload with Extraction ─────────────────────────── */}
       <div className="req-source-box">
         <div className="req-source-header">
           <div className="req-source-header-left">
             <span className="req-source-badge">1</span>
             <div>
-              <p className="req-source-title">Requirement Editor</p>
-              <p className="req-source-desc">Type or paste your requirements directly — user stories, BRD/SRS content, or any free-form text.</p>
+              <p className="req-source-title">File Upload</p>
+              <p className="req-source-desc">
+                Upload documents or screenshots and extract structured requirements via AI.
+              </p>
             </div>
           </div>
         </div>
-        <div className="field-stack">
-          <textarea
-            id="requirementsText"
-            className="requirements-text"
-            value={requirementText}
-            onChange={(e) => onRequirementTextChange(e.target.value)}
-            placeholder="Paste requirement text, user stories, BRD/SRS content, or pulled Jira details..."
-            disabled={isBusy}
-          />
+
+        {/* Vision warning — amber inline banner when images staged + provider lacks vision */}
+        {showVisionWarning && (
+          <div className="req-vision-warning" role="alert">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M7 1.5L13 12.5H1L7 1.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+              <path d="M7 5.5v3M7 10h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            <span>
+              Your current LLM provider does not support image analysis.
+              Switch to <strong>OpenAI</strong>, <strong>Anthropic</strong>, or <strong>Google</strong> in LLM Providers settings.
+            </span>
+          </div>
+        )}
+
+        {/* Drop zone */}
+        <div
+          ref={dropRef}
+          className="req-dropzone"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          aria-label="Drop files here or use the file picker"
+        >
+          <div className="req-dropzone-inner">
+            {/* Document icon */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {/* Camera icon */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ opacity: 0.65 }}>
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.5"/>
+            </svg>
+            <span className="req-dropzone-label">Drop files here or</span>
+            <label className="req-browse-btn">
+              Browse files
+              <input
+                type="file"
+                multiple
+                accept={ACCEPTED_EXTS}
+                onChange={onFileChange}
+                disabled={isBusy}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
+          <p className="req-dropzone-sublabel">
+            .txt .md .docx .pdf .xlsx .xls .csv .pptx · Screenshots &amp; scans: .png .jpg .webp
+          </p>
+          {!!uploadDrafts.length && (
+            <div className="req-staged-files">
+              {uploadDrafts.map((f) => (
+                <span key={f.name} className={`upload-draft-chip${f.sizeError ? ' upload-draft-chip--error' : ''}`}>
+                  {f.isImage && f.thumbnailUrl && !f.sizeError && (
+                    <img
+                      src={f.thumbnailUrl}
+                      alt=""
+                      className="req-img-chip-thumb"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {f.name}
+                  {f.sizeError && <span className="req-chip-error">{f.sizeError}</span>}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Manual text entry — stacked input per Q9: always available, not exclusive */}
+        <div className="req-manual-divider" aria-hidden="true">
+          <span>or type / paste</span>
+        </div>
+        <textarea
+          className="req-manual-textarea"
+          value={manualText}
+          onChange={(e) => onManualTextChange(e.target.value)}
+          placeholder="Paste or type requirements here — user stories, BRD/SRS content, or free-form text. Combined with uploaded files in one extraction call."
+          disabled={isBusy}
+          rows={3}
+          aria-label="Manual requirements input"
+          maxLength={MAX_REQUIREMENT_CHARS}
+        />
+        {manualText.length > 0 && (() => {
+          const pct = manualText.length / MAX_REQUIREMENT_CHARS;
+          const isWarn = pct >= WARN_THRESHOLD;
+          const isOver = manualText.length >= MAX_REQUIREMENT_CHARS;
+          return (
+            <div style={{
+              textAlign: 'right',
+              fontSize: 'var(--text-xs)',
+              marginTop: 2,
+              color: isOver ? '#e05252' : isWarn ? '#b45309' : 'var(--text-tertiary)',
+            }}>
+              {manualText.length.toLocaleString()} / {MAX_REQUIREMENT_CHARS.toLocaleString()}
+              {isWarn && !isOver && ' — approaching limit'}
+              {isOver && ' — limit reached'}
+            </div>
+          );
+        })()}
+
+        {/* Injection warning banner — shown when any parsed document contains suspicious patterns */}
+        {documentWarnings.length > 0 && (
+          <div className="req-injection-warning" role="alert">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M7 1.5L13 12.5H1L7 1.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+              <path d="M7 5.5v3M7 10h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            <div className="req-injection-warning-body">
+              <strong>Suspicious content detected</strong>
+              <ul className="req-injection-warning-list">
+                {documentWarnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+              <p className="req-injection-warning-hint">
+                The document may contain prompt injection attempts. Content has been flagged and sandboxed — it will not affect generation instructions.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="req-injection-warning-dismiss"
+              onClick={onDismissWarnings}
+              aria-label="Dismiss warning"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div className="button-row" style={{ marginTop: 'var(--space-3)' }}>
+          <button
+            type="button"
+            data-variant="secondary"
+            className="req-extract-btn"
+            onClick={onParseFiles}
+            disabled={isBusy || !hasUploadInput}
+          >
+            {extractLabel}
+          </button>
+          {isBusy && (feedback.startsWith('Parsing') || feedback.startsWith('Extracting')) && (
+            <span className="req-extract-progress">{feedback}</span>
+          )}
+        </div>
+
+        {uploadedRequirements.length > 0 && (
+          <RequirementTable
+            requirements={uploadedRequirements}
+            onUpdate={onRequirementUpdate}
+            onDelete={onRequirementDelete}
+            isBusy={isBusy}
+          />
+        )}
       </div>
 
-      {/* ── Section 2: File Upload ──────────────────────────────────────────── */}
+      {/* ── Section 2: Pull from Jira ──────────────────────────────────────── */}
       <div className="req-source-box">
         <div className="req-source-header">
           <div className="req-source-header-left">
             <span className="req-source-badge">2</span>
             <div>
-              <p className="req-source-title">File Upload Parsing</p>
-              <p className="req-source-desc">Upload a document and parse its content into the Requirement Editor above. Supports .txt, .md, .docx, .pdf.</p>
-            </div>
-          </div>
-        </div>
-        <div className="button-row">
-          <input type="file" multiple accept=".txt,.md,.docx,.pdf" onChange={onFileChange} disabled={isBusy} />
-          <button
-            type="button"
-            data-variant="secondary"
-            onClick={onParseFiles}
-            disabled={isBusy || !uploadDrafts.length}
-          >
-            Parse Selected Files
-          </button>
-        </div>
-        {!!uploadDrafts.length && !parsedFiles.length && (
-          <div className="upload-drafts">
-            <span className="upload-drafts-label">Staged ({uploadDrafts.length}):</span>
-            {uploadDrafts.map((f) => (
-              <span key={f.name} className="upload-draft-chip">{f.name}</span>
-            ))}
-          </div>
-        )}
-        {!!parsedFiles.length && (
-          <ul className="list" style={{ marginTop: 'var(--space-2)' }}>
-            {parsedFiles.map((file) => (
-              <li key={file.name}>
-                {file.name}: {file.error ? `Error — ${file.error}` : 'Parsed ✓'}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* ── Section 3: Pull from Jira ──────────────────────────────────────── */}
-      <div className="req-source-box">
-        <div className="req-source-header">
-          <div className="req-source-header-left">
-            <span className="req-source-badge">3</span>
-            <div>
               <p className="req-source-title">Pull from Jira</p>
-              <p className="req-source-desc">Fetch requirements directly from Jira issues, epics, or stories. Jira credentials must be saved in Integrations.</p>
+              <p className="req-source-desc">
+                Fetch requirements directly from Jira. Credentials must be configured in Integrations.
+              </p>
             </div>
           </div>
         </div>
+
         <div className="field-row">
           <label htmlFor="jiraMode">Mode</label>
           <select id="jiraMode" value={jiraMode} onChange={(e) => onJiraModeChange(e.target.value as JiraMode)}>
@@ -218,6 +379,7 @@ export const RequirementsTab = memo(function RequirementsTab({
             <option value="multiStory">Multi-Story Picker</option>
           </select>
         </div>
+
         {jiraMode === 'single' && (
           <div className="field-row">
             <label htmlFor="singleIssueKey">Issue Key</label>
@@ -252,26 +414,66 @@ export const RequirementsTab = memo(function RequirementsTab({
             </div>
           </>
         )}
+
         <div className="button-row" style={{ marginTop: 'var(--space-3)' }}>
           <button type="button" data-variant="secondary" onClick={onPullJira} disabled={isBusy}>
             Pull Jira Requirements
           </button>
         </div>
-        {!!pulledIssues.length && (
-          <ul className="list" style={{ marginTop: 'var(--space-2)' }}>
-            {pulledIssues.map((issue) => (
-              <li key={issue.key}>{issue.key}: {issue.summary}</li>
-            ))}
-          </ul>
+
+        {jiraRequirements.length > 0 && (
+          <RequirementTable
+            requirements={jiraRequirements}
+            onUpdate={onJiraRequirementUpdate}
+            onDelete={onJiraRequirementDelete}
+            isBusy={isBusy}
+          />
         )}
       </div>
 
-      {/* ── Generation footer ──────────────────────────────────────────────── */}
-      <div className="req-generate-footer">
-        {/* Left — spacer keeps the CTA zone right-aligned */}
-        <div />
+      <p className="feedback">{feedback}</p>
 
-        {/* Right — review gate + generate button as one unified CTA zone */}
+      {/* Spacer reserves space so content above isn't hidden behind fixed bar */}
+      <div className="req-sticky-bar-spacer" aria-hidden="true" />
+
+      {/* ── Fixed action bar — always visible, anchored to viewport bottom ─── */}
+      <div className="req-sticky-bar">
+
+        {/* Generation Instructions row */}
+        <div className="req-sticky-instructions">
+          <button
+            type="button"
+            className="req-instructions-toggle"
+            onClick={() => setGenContextOpen((v) => !v)}
+            aria-expanded={genContextOpen}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5ZM8.5 3.5l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="req-instructions-label">Generation Instructions</span>
+            {instructionText.trim() && !genContextOpen && (
+              <span className="req-instructions-preview">
+                {instructionText.length > 64 ? `${instructionText.slice(0, 64)}…` : instructionText}
+              </span>
+            )}
+            {instructionText.trim() && (
+              <span className="req-gen-context-indicator" aria-label="Instructions active" />
+            )}
+            <span className="req-instructions-chevron" aria-hidden="true">{genContextOpen ? '▾' : '▸'}</span>
+          </button>
+          {genContextOpen && (
+            <textarea
+              className="req-gen-context-textarea req-instructions-textarea"
+              value={instructionText}
+              onChange={(e) => onInstructionTextChange(e.target.value)}
+              placeholder="Optional: add special instructions for the LLM — e.g. 'Focus on security edge cases', 'Prioritize GDPR compliance requirements', 'Group by epic where possible'."
+              disabled={isBusy}
+              rows={3}
+            />
+          )}
+        </div>
+
+        {/* CTA row — review gate + generate */}
         <div className="req-cta-zone">
           <label
             className={`req-review-gate${requirementsReviewed ? ' req-review-gate--checked' : ''}`}
@@ -289,18 +491,20 @@ export const RequirementsTab = memo(function RequirementsTab({
           <button
             type="button"
             onClick={onGenerateAll}
-            disabled={isBusy}
+            disabled={isBusy || !hasAnyRequirements}
             className={`req-generate-btn${requirementsReviewed ? ' req-generate-btn--ready' : ''}`}
-            title={requirementsReviewed
-              ? 'Generate all artifacts'
-              : 'Check the box to confirm your requirements are ready'}
+            title={
+              !hasAnyRequirements
+                ? 'Paste or upload requirements first'
+                : requirementsReviewed
+                ? 'Generate all artifacts'
+                : 'Check the box to confirm your requirements are ready'
+            }
           >
             ⚡ Generate All Artifacts
           </button>
         </div>
       </div>
-
-      <p className="feedback">{feedback}</p>
     </section>
   );
 });

@@ -58,7 +58,7 @@ describe('ScenariosTab', () => {
 
   it('calls onAddScenario when Add Scenario clicked', () => {
     render(<ScenariosTab {...baseProps} />);
-    fireEvent.click(screen.getByText('Add Scenario'));
+    fireEvent.click(screen.getByText('+ Add Scenario'));
     expect(noop).toHaveBeenCalledTimes(1);
   });
 

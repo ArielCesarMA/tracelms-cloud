@@ -19,8 +19,15 @@ export interface LLMRequest {
   temperature?: number;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface LLMResponse {
   text: string;
+  usage?: TokenUsage;
 }
 
 export type StreamChunkHandler = (chunk: string) => void;

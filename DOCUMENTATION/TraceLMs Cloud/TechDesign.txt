@@ -1,0 +1,72 @@
+You are a Principal Full-Stack Software Engineer, Senior UI/UX Designer, and Brand Designer with 15+ years of experience building award-winning web applications.
+
+Your task is to inspect my web application running on localhost and redesign it into a modern, premium, production-ready website while preserving all existing functionality and business logic.
+
+Objectives
+1. Analyze every page, component, layout, and user flow.
+2. Identify UI, UX, accessibility, responsiveness, and performance issues.
+3. Create a cohesive design system with consistent colors, typography, spacing, icons, buttons, cards, forms, and animations.
+4. Improve navigation, visual hierarchy, and user experience.
+5. Make the interface fully responsive across desktop, tablet, and mobile.
+6. Apply modern design principles inspired by Apple, Stripe, Linear, Notion, Vercel, and Figma—without copying them.
+7. Refactor the frontend using clean, maintainable, reusable components and best practices.
+8. Optimize for accessibility (WCAG), SEO, and performance.
+9. Keep the application's functionality intact and avoid introducing regressions.
+
+
+Working Style
+
+Before making changes, inspect the current implementation and explain:
+1. What can be improved.
+2. Why it should be improved.
+3. How you will implement the improvement.
+
+Implement changes incrementally, ensuring every modification enhances usability, visual appeal, maintainability, and brand identity.
+
+
+Goal
+ Deliver a website that looks and feels like a premium, enterprise-grade product built by a world-class design agency, while remaining fast, accessible, intuitive, and production-ready.
+
+============================================================
+
+You are a Principal Full-Stack Software Engineer, Senior UI/UX Designer, and Brand Designer with 15+ years of experience building award-winning web applications. 
+
+I wanted to move my tabs or menus which currently place in the middle of my web app horizontally to left side vertically. im thinking this will help give more space. Can you suggest usual SaaS (Software as a Service) platforms use a left-side navigation sidebar to organize complex, multi-layered workflows. 
+
+
+My app concept is automates the end-to-end test generation and Jira/Xray management workflow. It bridges the gap between requirements documentation and executable test cases by applying large language models (LLMs) to transform unstructured requirements into structured, traceable, and Xray-ready test assets — without leaving the development environment.
+
+=============================================================
+
+Under the Settings (header), i wanted to add sub headers such as:
+ - Connection (this will cover LLM Configuration, JIRA Configuration, Xray Push Controls)
+ - Templates (this will cover a view on what are the fields included in Test Scenario and Test Cases UI view, Export JSON, Export CSV)
+ - Project/s (in future i wanted that each generation should be saved in a Project and this view will provide users a table which contains the best possible fields to describe a project and at the same time it will have a capability to add email for the project stakeholders which will be use later for an automated approval process for test cases)
+ - LLM (i wanted this web app to accommodate future new LLM so this sub header will provide a view on what are the current / existing LLM being use and this sections should allow user to add new LLM. Add table view and include the best possible fields that can be used by the tool in reference to the LLM configuration section)
+
+Can you assess and give me your expert inputs as a Principal Full-Stack Software Engineer, Senior UI/UX Designer, and Brand Designer with 15+ years of experience building award-winning web applications.
+
+
+postgresql://postgres:adMh0pMcTBdgYqxr@db.pjcskfwkogtswutxjcxi.supabase.co:5432/postgres
+
+============================================================
+
+Your task is to implement the feature or enhancement below:
+
+Feature: UX Cleanup — Dead Tabs
+
+Task Title: Add empty-state illustrations to blank generation tabs
+
+Task Description: Enhancement, Scenarios, TestCases, Automation tabs show blank content before generation. Add an empty-state component: icon + heading + sub-text ('Run generation to see results here'). Use the existing Tip.tsx component pattern. Consistent with the design system — no new tokens required.
+
+Draft a plan first and let me review it. Don't implement anything, always give your expert recommendation at the end for any issues, challenges while doing the task.
+
+=============================================================
+
+Proceed with the implementation. Once implemented, provide a confirmation if the task provided / at hand can be closed. Provide summary of what were delivered.
+
+Update the Phase 1 Persistence & Reliability.md located in C:\Users\Ariel Cesar Abaoag\Documents\TraceLMs-Cloud\DOCUMENTATION\TraceLMs Cloud\ENHANCEMENT\Enhancement Implementation
+
+Include on the file the Feature Name, Task Title and task Description then below it will be the Criterion and Delivered task.
+
+====================

@@ -1,7 +1,8 @@
-import { LLMRequest, LLMResponse, StreamChunkHandler } from '../../types';
+import { LLMRequest, LLMResponse, StreamChunkHandler, TokenUsage } from '../../types';
 import { LLMProvider } from './LLMProvider';
 import { estimateTimeoutMs } from './timeoutUtil';
 import { makeIdleTimeout } from '../../utils/idleTimeout';
+import { getModelCapabilities } from './probeModelCapabilities';
 
 export class GeminiProvider implements LLMProvider {
   constructor(private readonly apiKey: string) {}
@@ -9,18 +10,24 @@ export class GeminiProvider implements LLMProvider {
   private static buildRequestBody(
     model: string,
     prompt: string,
-    temperature: number
+    temperature: number,
+    systemPrompt?: string,
+    isReasoningModel?: boolean,
   ): Record<string, unknown> {
-    // No maxOutputTokens cap — structured JSON generation (test cases, scenarios)
-    // can produce large outputs; truncation causes silent JSON parse failures.
-    // thinkingConfig and systemInstruction are NOT available via the Gemini REST
-    // API (v1/v1beta generateContent) — both are SDK-only. Prompt concatenation
-    // is used instead.
+    // No maxOutputTokens cap — structured JSON generation can produce large outputs;
+    // truncation causes silent JSON parse failures.
     void model;
-    return {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature }
+    const body: Record<string, unknown> = {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature,
+        ...(isReasoningModel ? { thinkingConfig: { thinkingBudget: -1 } } : {}),
+      },
     };
+    if (systemPrompt) {
+      body.systemInstruction = { parts: [{ text: systemPrompt }] };
+    }
+    return body;
   }
 
   private readonly transientRetryCount = 3;
@@ -109,12 +116,9 @@ export class GeminiProvider implements LLMProvider {
 
   private getFallbackModels(primaryModel: string, availableModels: string[]): string[] {
     const preferred = [
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-001',
-      'gemini-2.0-flash-lite',
-      'gemini-2.0-flash-lite-001',
       'gemini-2.5-flash',
-      'gemini-2.5-pro'
+      'gemini-2.5-pro',
+      'gemini-3.1-pro',
     ];
 
     const normalizedAvailable = availableModels
@@ -134,9 +138,8 @@ export class GeminiProvider implements LLMProvider {
       }
     }
 
-    if (result.size === 0 && primaryModel.startsWith('gemini-2.5')) {
-      result.add('gemini-2.0-flash');
-      result.add('gemini-2.0-flash-lite');
+    if (result.size === 0) {
+      result.add('gemini-2.5-flash');
     }
 
     return Array.from(result);
@@ -148,9 +151,12 @@ export class GeminiProvider implements LLMProvider {
     temperature: number,
     maxRetries: number,
     timeoutMs: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    systemPrompt?: string,
+    isReasoningModel?: boolean,
   ): Promise<{
     text: string;
+    usage?: TokenUsage;
     status: number;
     detail: string;
     transientFailure: boolean;
@@ -172,7 +178,7 @@ export class GeminiProvider implements LLMProvider {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(
-              GeminiProvider.buildRequestBody(model, prompt, temperature)
+              GeminiProvider.buildRequestBody(model, prompt, temperature, systemPrompt, isReasoningModel)
             ),
             signal
           });
@@ -186,11 +192,17 @@ export class GeminiProvider implements LLMProvider {
         if (response.ok) {
           const data = (await response.json()) as {
             candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
           };
 
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          const m = data.usageMetadata;
+          const usage: TokenUsage | undefined = m
+            ? { promptTokens: m.promptTokenCount ?? 0, completionTokens: m.candidatesTokenCount ?? 0, totalTokens: m.totalTokenCount ?? 0 }
+            : undefined;
           return {
             text,
+            usage,
             status: 200,
             detail: '',
             transientFailure: false
@@ -229,6 +241,7 @@ export class GeminiProvider implements LLMProvider {
 
     return {
       text: '',
+      usage: undefined,
       status: lastStatus,
       detail: lastDetail,
       transientFailure
@@ -245,15 +258,12 @@ export class GeminiProvider implements LLMProvider {
       throw new Error('Gemini model is required.');
     }
 
-    // Concatenate system + user prompts. The Gemini REST API (v1/v1beta generateContent)
-    // does not support systemInstruction or thinkingConfig — both are SDK-only.
-    const prompt = request.systemPrompt
-      ? `${request.systemPrompt}\n\n${request.prompt}`
-      : request.prompt;
+    const prompt = request.prompt;
 
-    // Dynamic timeout: scales with estimated token count so large documents
-    // don't hit a wall-clock ceiling that was sized for small inputs.
-    const timeoutMs = estimateTimeoutMs(prompt, model, 'gemini');
+    const [timeoutMs, caps] = await Promise.all([
+      estimateTimeoutMs(prompt, model, 'gemini', this.apiKey),
+      getModelCapabilities(model, 'gemini', this.apiKey),
+    ]);
 
     const globalController = new AbortController();
     const globalTimer = setTimeout(() => globalController.abort(), timeoutMs);
@@ -265,11 +275,13 @@ export class GeminiProvider implements LLMProvider {
         request.temperature ?? 0.2,
         this.transientRetryCount,
         timeoutMs,
-        globalController.signal
+        globalController.signal,
+        request.systemPrompt,
+        caps.isReasoningModel,
       );
 
       if (primaryResult.text) {
-        return { text: primaryResult.text };
+        return { text: primaryResult.text, usage: primaryResult.usage };
       }
 
       const availableModels = await this.listAvailableModels(globalController.signal);
@@ -283,11 +295,13 @@ export class GeminiProvider implements LLMProvider {
             request.temperature ?? 0.2,
             this.fallbackRetryCount,
             timeoutMs,
-            globalController.signal
+            globalController.signal,
+            request.systemPrompt,
+            caps.isReasoningModel,
           );
 
           if (fallbackResult.text) {
-            return { text: fallbackResult.text };
+            return { text: fallbackResult.text, usage: fallbackResult.usage };
           }
         }
 
@@ -320,9 +334,8 @@ export class GeminiProvider implements LLMProvider {
     if (!this.apiKey) throw new Error('Gemini API key is missing.');
 
     const model = this.normalizeModel(request.model);
-    const prompt = request.systemPrompt
-      ? `${request.systemPrompt}\n\n${request.prompt}`
-      : request.prompt;
+    const prompt = request.prompt;
+    const caps = await getModelCapabilities(model, 'gemini', this.apiKey);
 
     // Option 2 — idle timeout: abort only if no chunk arrives for IDLE_MS.
     // A wall-clock timeout is wrong for streaming because it fires based on
@@ -344,7 +357,7 @@ export class GeminiProvider implements LLMProvider {
         const r = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(GeminiProvider.buildRequestBody(model, prompt, request.temperature ?? 0.2)),
+          body: JSON.stringify(GeminiProvider.buildRequestBody(model, prompt, request.temperature ?? 0.2, request.systemPrompt, caps.isReasoningModel)),
           signal,
         });
         if (r.ok) { response = r; break; }
@@ -372,17 +385,23 @@ export class GeminiProvider implements LLMProvider {
     }
 
     let fullText = '';
+    let streamUsage: TokenUsage | undefined;
     try {
       const { parseSseLines } = await import('../../utils/sseReader');
       for await (const line of parseSseLines(response)) {
         const data = JSON.parse(line) as {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
         };
         const chunk = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (chunk) {
           fullText += chunk;
           onChunk(chunk);
           touch(); // reset idle window — stream is alive
+        }
+        if (data.usageMetadata) {
+          const m = data.usageMetadata;
+          streamUsage = { promptTokens: m.promptTokenCount ?? 0, completionTokens: m.candidatesTokenCount ?? 0, totalTokens: m.totalTokenCount ?? 0 };
         }
       }
     } catch (err) {
@@ -392,7 +411,7 @@ export class GeminiProvider implements LLMProvider {
         // JSON extraction on what arrived. Only fall back to complete() when
         // the stream produced nothing at all.
         cancel();
-        if (fullText) return { text: fullText };
+        if (fullText) return { text: fullText, usage: streamUsage };
         const result = await this.complete(request);
         onChunk(result.text);
         return result;
@@ -409,6 +428,6 @@ export class GeminiProvider implements LLMProvider {
       return result;
     }
 
-    return { text: fullText };
+    return { text: fullText, usage: streamUsage };
   }
 }

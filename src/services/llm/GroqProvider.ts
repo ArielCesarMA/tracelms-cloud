@@ -1,7 +1,8 @@
-import { LLMRequest, LLMResponse, StreamChunkHandler } from '../../types';
+import { LLMRequest, LLMResponse, StreamChunkHandler, TokenUsage } from '../../types';
 import { LLMProvider } from './LLMProvider';
 import { estimateTimeoutMs } from './timeoutUtil';
 import { makeIdleTimeout } from '../../utils/idleTimeout';
+import { getModelCapabilities } from './probeModelCapabilities';
 
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
@@ -15,7 +16,10 @@ export class GroqProvider implements LLMProvider {
       ? `${request.systemPrompt}\n\n${request.prompt}`
       : request.prompt;
 
-    const timeoutMs = estimateTimeoutMs(prompt, request.model, 'groq');
+    const [timeoutMs, { maxOutputTokens }] = await Promise.all([
+      estimateTimeoutMs(prompt, request.model, 'groq'),
+      getModelCapabilities(request.model, 'groq'),
+    ]);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -30,6 +34,7 @@ export class GroqProvider implements LLMProvider {
         body: JSON.stringify({
           model: request.model,
           temperature: request.temperature ?? 0.2,
+          max_tokens: maxOutputTokens,
           messages: [
             ...(request.systemPrompt ? [{ role: 'system', content: request.systemPrompt }] : []),
             { role: 'user', content: request.prompt },
@@ -52,9 +57,15 @@ export class GroqProvider implements LLMProvider {
 
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
 
-    return { text: data.choices?.[0]?.message?.content ?? '' };
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const u = data.usage;
+    const usage: TokenUsage | undefined = u
+      ? { promptTokens: u.prompt_tokens ?? 0, completionTokens: u.completion_tokens ?? 0, totalTokens: u.total_tokens ?? 0 }
+      : undefined;
+    return { text, usage };
   }
 
   public async stream(request: LLMRequest, onChunk: StreamChunkHandler): Promise<LLMResponse> {
@@ -62,6 +73,7 @@ export class GroqProvider implements LLMProvider {
 
     const IDLE_MS = 300_000;
     const { signal, touch, cancel } = makeIdleTimeout(IDLE_MS);
+    const { maxOutputTokens } = await getModelCapabilities(request.model, 'groq');
 
     let response: Response;
     try {
@@ -74,7 +86,9 @@ export class GroqProvider implements LLMProvider {
         body: JSON.stringify({
           model: request.model,
           temperature: request.temperature ?? 0.2,
+          max_tokens: maxOutputTokens,
           stream: true,
+          stream_options: { include_usage: true },
           messages: [
             ...(request.systemPrompt ? [{ role: 'system', content: request.systemPrompt }] : []),
             { role: 'user', content: request.prompt },
@@ -98,11 +112,13 @@ export class GroqProvider implements LLMProvider {
     }
 
     let fullText = '';
+    let streamUsage: TokenUsage | undefined;
     try {
       const { parseSseLines } = await import('../../utils/sseReader');
       for await (const line of parseSseLines(response)) {
         const data = JSON.parse(line) as {
           choices?: Array<{ delta?: { content?: string } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
         };
         const delta = data.choices?.[0]?.delta?.content;
         if (delta) {
@@ -110,11 +126,18 @@ export class GroqProvider implements LLMProvider {
           onChunk(delta);
           touch();
         }
+        if (data.usage) {
+          streamUsage = {
+            promptTokens: data.usage.prompt_tokens ?? 0,
+            completionTokens: data.usage.completion_tokens ?? 0,
+            totalTokens: data.usage.total_tokens ?? 0,
+          };
+        }
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         cancel();
-        if (fullText) return { text: fullText };
+        if (fullText) return { text: fullText, usage: streamUsage };
         const result = await this.complete(request);
         onChunk(result.text);
         return result;
@@ -130,6 +153,6 @@ export class GroqProvider implements LLMProvider {
       return result;
     }
 
-    return { text: fullText };
+    return { text: fullText, usage: streamUsage };
   }
 }

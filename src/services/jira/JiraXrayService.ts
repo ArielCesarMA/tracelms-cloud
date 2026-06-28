@@ -2,6 +2,16 @@ export type JiraIssueSummary = {
   key: string;
   summary: string;
   description: string;
+  issueType?: string;
+  priority?: string;
+};
+
+const JIRA_PRIORITY_MAP: Record<string, string> = {
+  Highest: 'Critical',
+  High:    'High',
+  Medium:  'Medium',
+  Low:     'Low',
+  Lowest:  'Low',
 };
 
 export type XrayPushResult = {
@@ -10,6 +20,8 @@ export type XrayPushResult = {
   self?: string;
 };
 
+export type PushErrorClass = 'success' | 'duplicate' | 'validation' | 'permanent';
+
 export type XrayPushItemStatus = {
   localId: string;
   success: boolean;
@@ -17,7 +29,20 @@ export type XrayPushItemStatus = {
   url?: string;
   message?: string;
   isValidationError?: boolean;
+  errorClass?: PushErrorClass;
+  fixPath?: string;
 };
+
+function classifyPushError(msg: string): { errorClass: PushErrorClass; fixPath: string } {
+  const m = msg.toLowerCase();
+  if (m.includes('401') || m.includes('403') || m.includes('unauthorized') || m.includes('forbidden')) {
+    return { errorClass: 'permanent', fixPath: 'Settings → Integrations: verify your API token has Xray write permissions for this project.' };
+  }
+  if (m.includes('required') || m.includes('missing') || m.includes('field') || m.includes('invalid')) {
+    return { errorClass: 'permanent', fixPath: 'Output Config: add or correct the required field mapping for this Xray project.' };
+  }
+  return { errorClass: 'permanent', fixPath: 'Check Settings → Integrations and ensure Xray credentials are correct.' };
+}
 
 export type XrayManualTestCase = {
   id: string;
@@ -48,13 +73,16 @@ export class JiraXrayService {
   public async getIssue(issueKey: string): Promise<JiraIssueSummary> {
     const issue = await this.request<{
       key: string;
-      fields?: { summary?: string; description?: unknown };
-    }>(`/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=summary,description`);
+      fields?: { summary?: string; description?: unknown; issuetype?: { name?: string }; priority?: { name?: string } };
+    }>(`/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=summary,description,issuetype,priority`);
 
+    const rawPriority = issue.fields?.priority?.name ?? '';
     return {
       key: issue.key,
       summary: issue.fields?.summary ?? '',
-      description: this.extractDescription(issue.fields?.description)
+      description: this.extractDescription(issue.fields?.description),
+      issueType: issue.fields?.issuetype?.name ?? '',
+      priority: JIRA_PRIORITY_MAP[rawPriority] ?? 'Medium',
     };
   }
 
@@ -160,20 +188,25 @@ export class JiraXrayService {
             localId: testCase.id,
             success: true,
             key: first.key,
-            url: first.self
+            url: first.self,
+            errorClass: 'success',
           });
         } else {
+          const msg = 'Xray response did not include an issue key.';
           statuses.push({
             localId: testCase.id,
             success: false,
-            message: 'Xray response did not include an issue key.'
+            message: msg,
+            ...classifyPushError(msg),
           });
         }
       } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Unknown push error.';
         statuses.push({
           localId: testCase.id,
           success: false,
-          message: error instanceof Error ? error.message : 'Unknown push error.'
+          message: msg,
+          ...classifyPushError(msg),
         });
       }
     }
@@ -215,21 +248,29 @@ export class JiraXrayService {
 
   private async searchByJql(jql: string, maxResults = 50): Promise<JiraIssueSummary[]> {
     const response = await this.request<{
-      issues?: Array<{ key: string; fields?: { summary?: string; description?: unknown } }>;
+      issues?: Array<{
+        key: string;
+        fields?: { summary?: string; description?: unknown; issuetype?: { name?: string }; priority?: { name?: string } };
+      }>;
     }>('/rest/api/3/search', {
       method: 'POST',
       body: JSON.stringify({
         jql,
         maxResults,
-        fields: ['summary', 'description']
+        fields: ['summary', 'description', 'issuetype', 'priority']
       })
     });
 
-    return (response.issues ?? []).map((issue) => ({
-      key: issue.key,
-      summary: issue.fields?.summary ?? '',
-      description: this.extractDescription(issue.fields?.description)
-    }));
+    return (response.issues ?? []).map((issue) => {
+      const rawPriority = issue.fields?.priority?.name ?? '';
+      return {
+        key: issue.key,
+        summary: issue.fields?.summary ?? '',
+        description: this.extractDescription(issue.fields?.description),
+        issueType: issue.fields?.issuetype?.name ?? '',
+        priority: JIRA_PRIORITY_MAP[rawPriority] ?? 'Medium',
+      };
+    });
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {

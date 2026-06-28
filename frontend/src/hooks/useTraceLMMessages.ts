@@ -8,12 +8,15 @@ import {
   type JiraIssueSummary,
   type UploadDraft,
   type RequirementEnhancement,
+  type RequirementPriority,
+  type ExtractedRequirement,
   type ScenarioItem,
   type TestCaseItem,
   type AutomationAnalysis,
   type XrayPushedIssue,
   type XrayPushPreview,
   type XrayPushProgress,
+  type TokenUsage,
   emptyEnhancement,
 } from '../types';
 import * as api from '../api/client';
@@ -27,6 +30,8 @@ type Refs = {
   testCasesRef: MutableRefObject<TestCaseItem[]>;
   xrayPushedIssuesRef: MutableRefObject<XrayPushedIssue[]>;
   uploadDraftsRef: MutableRefObject<UploadDraft[]>;
+  manualTextRef: MutableRefObject<string>;
+  activeProjectIdRef: MutableRefObject<string | null>;
 };
 
 type Setters = {
@@ -37,6 +42,9 @@ type Setters = {
   setRequirementText: Dispatch<SetStateAction<string>>;
   setRequirementsReviewed: Dispatch<SetStateAction<boolean>>;
   setParsedFiles: Dispatch<SetStateAction<ParsedFile[]>>;
+  setDocumentWarnings: Dispatch<SetStateAction<string[]>>;
+  setUploadedRequirements: Dispatch<SetStateAction<ExtractedRequirement[]>>;
+  setJiraRequirements: Dispatch<SetStateAction<ExtractedRequirement[]>>;
   setStoryOptions: Dispatch<SetStateAction<JiraIssueSummary[]>>;
   setPulledIssues: Dispatch<SetStateAction<JiraIssueSummary[]>>;
   setEnhancement: Dispatch<SetStateAction<RequirementEnhancement>>;
@@ -47,6 +55,7 @@ type Setters = {
   setXrayPushPreview: Dispatch<SetStateAction<XrayPushPreview | null>>;
   setXrayPushProgress: Dispatch<SetStateAction<XrayPushProgress | null>>;
   setGenerationProgress: Dispatch<SetStateAction<string>>;
+  setTokenUsage: Dispatch<SetStateAction<TokenUsage | null>>;
   onEnhancementReceived?: () => void;
   onScenariosReceived?: () => void;
   onChainSettled?: () => void;
@@ -56,6 +65,9 @@ type Setters = {
   // with the exact error message.
   // stepKey: 'enhancement+scenarios' | 'testCases' | 'automation'
   onGenerateAllFailed?: (stepKey: string, errorMessage: string) => void;
+  // Called after the generation record is saved; generationId is the DB row id.
+  // projectId is the active project at save time (null if none).
+  onGenerationSaved?: (generationId: string, projectId: string | null) => void;
 };
 
 export type TraceLMActions = {
@@ -80,15 +92,26 @@ export type TraceLMActions = {
 export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const {
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
-    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef,
+    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, manualTextRef,
     setStatus, setFeedback, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
-    setParsedFiles, setStoryOptions, setPulledIssues,
+    setParsedFiles, setDocumentWarnings, setUploadedRequirements, setJiraRequirements,
+    setStoryOptions, setPulledIssues,
     setEnhancement, setScenarios, setTestCases,
     setXrayPushedIssues, setAutomation,
-    setXrayPushPreview, setXrayPushProgress, setGenerationProgress,
+    setXrayPushPreview, setXrayPushProgress, setGenerationProgress, setTokenUsage,
     onEnhancementReceived, onScenariosReceived, onChainSettled, onGenerateAllDone, onGenerateAllFailed,
+    onGenerationSaved, activeProjectIdRef,
   } = params;
+
+  function mergeUsage(a: TokenUsage | undefined, b: TokenUsage | undefined): TokenUsage | undefined {
+    if (!a && !b) return undefined;
+    return {
+      promptTokens: (a?.promptTokens ?? 0) + (b?.promptTokens ?? 0),
+      completionTokens: (a?.completionTokens ?? 0) + (b?.completionTokens ?? 0),
+      totalTokens: (a?.totalTokens ?? 0) + (b?.totalTokens ?? 0),
+    };
+  }
 
   // Index aligns with generateAllStepRef: 1=Phase1(parallel), 2=Test Cases, 3=Automation
   const STEP_NAMES = ['', 'Phase 1 (Enhancement + Scenarios)', 'Test Cases', 'Automation Analysis'];
@@ -152,19 +175,80 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   // ── Files ───────────────────────────────────────────────────────────────────
 
   const parseSelectedFiles = useCallback((): void => {
-    if (!uploadDraftsRef.current.length) { setFeedback('Select at least one file first.'); return; }
+    const drafts = uploadDraftsRef.current;
+    const hasManual = manualTextRef.current.trim().length > 0;
+    // Exclude error drafts (size/format errors) from processing
+    const validDrafts = drafts.filter((d) => !d.sizeError);
+    const imageDrafts = validDrafts.filter((d) => d.isImage);
+    const docDrafts   = validDrafts.filter((d) => !d.isImage);
+    const hasDocs     = docDrafts.length > 0;
+    const hasImages   = imageDrafts.length > 0;
+
+    if (!hasDocs && !hasImages && !hasManual) {
+      setFeedback('Add files or type requirements before extracting.');
+      return;
+    }
     setIsBusy(true);
-    setFeedback('Parsing selected files...');
-    void api.parseFiles(uploadDraftsRef.current).then(({ combinedText, files }) => {
-      setIsBusy(false);
-      setParsedFiles(files);
-      if (combinedText) {
-        setRequirementText((prev) => prev ? `${prev}\n\n${combinedText}` : combinedText);
+    setUploadedRequirements([]);
+
+    void (async () => {
+      try {
+        // Parallel execution: text call (docs + manual) + one vision call per image
+        const feedbackParts: string[] = [];
+        if (hasDocs || hasManual) feedbackParts.push('Parsing documents…');
+        if (hasImages) feedbackParts.push('Analysing images…');
+        setFeedback(feedbackParts.join('  |  '));
+
+        // Build text call promise (resolves to ExtractedRequirement[])
+        const textPromise: Promise<ExtractedRequirement[]> = (hasDocs || hasManual)
+          ? (async () => {
+              let fileText = '';
+              if (hasDocs) {
+                const { combinedText, files, warnings } = await api.parseFiles(docDrafts);
+                setParsedFiles(files);
+                if (warnings && warnings.length > 0) setDocumentWarnings(warnings);
+                fileText = combinedText ?? '';
+              }
+              const rawText = [fileText, manualTextRef.current.trim()].filter(Boolean).join('\n\n');
+              if (!rawText) return [];
+              setFeedback('Extracting requirements…');
+              const rows: ExtractedRequirement[] = [];
+              await api.streamExtractRequirements(rawText, settingsRef.current, (row) => {
+                rows.push(row);
+              });
+              return rows;
+            })()
+          : Promise.resolve([]);
+
+        // Build one vision call per image (Q1 decision — one call per image, concurrent)
+        const visionPromises: Promise<ExtractedRequirement[]>[] = imageDrafts.map((img) =>
+          api.extractImageRequirements(img.contentBase64, img.mimeType, settingsRef.current)
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : 'Image extraction failed.';
+              setFeedback(`Image extraction failed for ${img.name}: ${msg}`);
+              return [] as ExtractedRequirement[];
+            })
+        );
+
+        // Run all concurrently
+        const [textRows, ...imageRowSets] = await Promise.all([textPromise, ...visionPromises]);
+        const allRows = [...textRows, ...imageRowSets.flat()];
+
+        // Reassign sequential REQ-IDs across all sources after merge
+        const merged: ExtractedRequirement[] = allRows.map((row, i) => ({
+          ...row,
+          reqId: `REQ-${String(i + 1).padStart(3, '0')}`,
+        }));
+
+        setUploadedRequirements(merged);
         setRequirementsReviewed(false);
+        setIsBusy(false);
+        setFeedback(`Extracted ${merged.length} requirement(s).`);
+      } catch (err: unknown) {
+        handleError(err, 'Requirement extraction');
       }
-      setFeedback('File parsing complete.');
-    }).catch((err: unknown) => handleError(err, 'File parsing'));
-  }, [uploadDraftsRef, setIsBusy, setFeedback, setParsedFiles, setRequirementText, setRequirementsReviewed, handleError]);
+    })();
+  }, [uploadDraftsRef, manualTextRef, settingsRef, setIsBusy, setFeedback, setParsedFiles, setDocumentWarnings, setUploadedRequirements, setRequirementsReviewed, handleError]);
 
   // ── Jira ────────────────────────────────────────────────────────────────────
 
@@ -181,102 +265,122 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const pullFromJira = useCallback((mode: string, payload: Record<string, string>): void => {
     setIsBusy(true);
     setFeedback('Pulling Jira requirements...');
-    void api.pullFromJira(mode, payload, settingsRef.current).then(({ issues, combinedText }) => {
+    void api.pullFromJira(mode, payload, settingsRef.current).then(({ issues }) => {
       setIsBusy(false);
       setPulledIssues(issues);
-      if (combinedText) {
-        setRequirementText((prev) => prev ? `${prev}\n\n${combinedText}` : combinedText);
-        setRequirementsReviewed(false);
-      }
-      setFeedback(`Pulled ${issues.length} Jira issue(s).`);
+      const mapped: ExtractedRequirement[] = issues.map((issue) => ({
+        reqId: issue.key,
+        summary: issue.summary,
+        description: issue.description,
+        issueType: issue.issueType === 'Epic' ? 'Epic' : 'Story',
+        requirementType: 'Functional',
+        priority: (issue.priority as RequirementPriority) ?? 'Medium',
+        source: 'jira',
+      }));
+      setJiraRequirements(mapped);
+      setRequirementsReviewed(false);
+      setFeedback(`Pulled ${issues.length} Jira issue(s) → ${mapped.length} requirement(s).`);
     }).catch((err: unknown) => handleError(err, 'Jira pull'));
-  }, [settingsRef, setIsBusy, setFeedback, setPulledIssues, setRequirementText, setRequirementsReviewed, handleError]);
+  }, [settingsRef, setIsBusy, setFeedback, setPulledIssues, setJiraRequirements, setRequirementsReviewed, handleError]);
 
   // ── Generation ──────────────────────────────────────────────────────────────
 
-  const runEnhancement = useCallback(async (requirements: string): Promise<RequirementEnhancement> => {
-    const { enhancement: raw } = await api.streamEnhancement(
+  const runEnhancement = useCallback(async (requirements: string): Promise<{ result: RequirementEnhancement; usage?: TokenUsage }> => {
+    const { enhancement: raw, usage } = await api.streamEnhancement(
       requirements,
       settingsRef.current,
-      (e) => { if (e.type === 'chunk') setFeedback(`Enhancing requirements... (${e.chars.toLocaleString()} chars)`); },
+      (e) => {
+        if (e.type === 'model-info' && e.isReasoning) setFeedback('Reasoning model active — this step may take longer than usual...');
+        else if (e.type === 'chunk') setFeedback(`Enhancing requirements... (${e.chars.toLocaleString()} chars)`);
+      },
+      activeProjectIdRef.current,
     );
     const normalized = { ...emptyEnhancement, ...(raw as Partial<RequirementEnhancement>) };
     setEnhancement(normalized);
     enhancementRef.current = normalized;
     onEnhancementReceived?.();
     setFeedback('Requirement enhancement complete.');
-    return normalized;
+    return { result: normalized, usage };
   }, [settingsRef, enhancementRef, setEnhancement, onEnhancementReceived, setFeedback]);
 
   // Enhancement is optional — when running in parallel with enhancement (Generate All DAG),
   // scenarios starts from requirements alone. The prompt handles the absent enhancement case.
-  const runScenarios = useCallback(async (requirements: string, enhancement?: RequirementEnhancement): Promise<ScenarioItem[]> => {
-    const { scenarios: raw } = await api.streamScenarios(
+  const runScenarios = useCallback(async (requirements: string, enhancement?: RequirementEnhancement): Promise<{ result: ScenarioItem[]; usage?: TokenUsage }> => {
+    const { scenarios: raw, usage } = await api.streamScenarios(
       requirements,
       enhancement ?? null,
       settingsRef.current,
-      (e) => { if (e.type === 'chunk') setFeedback(`Generating scenarios... (${e.chars.toLocaleString()} chars)`); },
+      (e) => {
+        if (e.type === 'model-info' && e.isReasoning) setFeedback('Reasoning model active — this step may take longer than usual...');
+        else if (e.type === 'chunk') setFeedback(`Generating scenarios... (${e.chars.toLocaleString()} chars)`);
+      },
+      activeProjectIdRef.current,
     );
     const parsed = (raw as ScenarioItem[]) ?? [];
     setScenarios(parsed);
     scenariosRef.current = parsed;
     onScenariosReceived?.();
     setFeedback(`Generated ${parsed.length} scenario(s).`);
-    return parsed;
+    return { result: parsed, usage };
   }, [settingsRef, scenariosRef, setScenarios, onScenariosReceived, setFeedback]);
 
-  const runTestCases = useCallback(async (scenarios: ScenarioItem[]): Promise<TestCaseItem[]> => {
-    const { testCases: raw } = await api.streamTestCases(
+  const runTestCases = useCallback(async (scenarios: ScenarioItem[]): Promise<{ result: TestCaseItem[]; usage?: TokenUsage }> => {
+    const { testCases: raw, usage } = await api.streamTestCases(
       scenarios,
       settingsRef.current,
-      (e) => { if (e.type === 'chunk') setFeedback(`Generating test cases... (${e.chars.toLocaleString()} chars)`); },
+      (e) => {
+        if (e.type === 'model-info' && e.isReasoning) setFeedback('Reasoning model active — this step may take longer than usual...');
+        else if (e.type === 'chunk') setFeedback(`Generating test cases... (${e.chars.toLocaleString()} chars)`);
+      },
+      activeProjectIdRef.current,
     );
     const parsed = (raw as TestCaseItem[]) ?? [];
     setTestCases(parsed);
     setXrayPushedIssues([]);
     setFeedback(`Generated ${parsed.length} test case(s).`);
-    return parsed;
+    return { result: parsed, usage };
   }, [settingsRef, setTestCases, setXrayPushedIssues, setFeedback]);
 
-  const runAutomation = useCallback(async (requirements: string, enhancement: RequirementEnhancement, scenarios: ScenarioItem[], testCases: TestCaseItem[]): Promise<void> => {
-    const { analysis: raw } = await api.streamAutomation(
+  const runAutomation = useCallback(async (requirements: string, enhancement: RequirementEnhancement, scenarios: ScenarioItem[], testCases: TestCaseItem[]): Promise<{ result: AutomationAnalysis; usage?: TokenUsage }> => {
+    const { analysis: raw, usage } = await api.streamAutomation(
       requirements,
       enhancement,
       scenarios,
       testCases,
       settingsRef.current,
       (event) => {
-        if (event.type === 'batch') {
-          setFeedback(`Analyzing automation candidates... (batch ${event.current} of ${event.total})`);
-        } else {
-          setFeedback(`Analyzing automation candidates... (${event.chars.toLocaleString()} chars)`);
-        }
+        if (event.type === 'model-info' && event.isReasoning) setFeedback('Reasoning model active — this step may take longer than usual...');
+        else if (event.type === 'batch') setFeedback(`Analyzing automation candidates... (batch ${event.current} of ${event.total})`);
+        else if (event.type === 'chunk') setFeedback(`Analyzing automation candidates... (${event.chars.toLocaleString()} chars)`);
       },
+      activeProjectIdRef.current,
     );
-    setAutomation(raw as AutomationAnalysis);
+    const analysis = raw as AutomationAnalysis;
+    setAutomation(analysis);
     setFeedback('Automation analysis completed.');
+    return { result: analysis, usage };
   }, [settingsRef, setAutomation, setFeedback]);
 
   const generateEnhancement = useCallback((): void => {
     if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before enhancement.'); return; }
     setIsBusy(true);
     setFeedback('Generating requirement enhancement...');
-    void runEnhancement(requirementTextRef.current).then(() => setIsBusy(false)).catch((err: unknown) => handleError(err, 'Enhancement'));
-  }, [requirementTextRef, setIsBusy, setFeedback, runEnhancement, handleError]);
+    void runEnhancement(requirementTextRef.current).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Enhancement'));
+  }, [requirementTextRef, setIsBusy, setFeedback, setTokenUsage, runEnhancement, handleError]);
 
   const generateScenarios = useCallback((): void => {
     if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before scenario generation.'); return; }
     setIsBusy(true);
     setFeedback('Generating scenarios...');
-    void runScenarios(requirementTextRef.current, enhancementRef.current).then(() => setIsBusy(false)).catch((err: unknown) => handleError(err, 'Scenarios'));
-  }, [requirementTextRef, enhancementRef, setIsBusy, setFeedback, runScenarios, handleError]);
+    void runScenarios(requirementTextRef.current, enhancementRef.current).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Scenarios'));
+  }, [requirementTextRef, enhancementRef, setIsBusy, setFeedback, setTokenUsage, runScenarios, handleError]);
 
   const generateTestCases = useCallback((): void => {
     if (!scenariosRef.current.length) { setFeedback('Generate scenarios first.'); return; }
     setIsBusy(true);
     setFeedback('Generating test cases...');
-    void runTestCases(scenariosRef.current).then(() => setIsBusy(false)).catch((err: unknown) => handleError(err, 'Test Cases'));
-  }, [scenariosRef, setIsBusy, setFeedback, runTestCases, handleError]);
+    void runTestCases(scenariosRef.current).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Test Cases'));
+  }, [scenariosRef, setIsBusy, setFeedback, setTokenUsage, runTestCases, handleError]);
 
   // BUG-2 fix: dedicated action for the Automation tab that uses current state, never re-runs test cases.
   const generateAutomationAnalysis = useCallback((): void => {
@@ -288,8 +392,8 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       enhancementRef.current,
       scenariosRef.current,
       testCasesRef.current
-    ).then(() => setIsBusy(false)).catch((err: unknown) => handleError(err, 'Automation analysis'));
-  }, [testCasesRef, requirementTextRef, enhancementRef, scenariosRef, setIsBusy, setFeedback, runAutomation, handleError]);
+    ).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Automation analysis'));
+  }, [testCasesRef, requirementTextRef, enhancementRef, scenariosRef, setIsBusy, setFeedback, setTokenUsage, runAutomation, handleError]);
 
   // ── Generate All — DAG-aware parallel execution ──────────────────────────────
   //
@@ -302,15 +406,17 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   // can race from the same starting gun. Automation still receives full Enhancement
   // context, preserving output quality where it matters most.
   const generateAll = useCallback((): void => {
-    if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before generation.'); return; }
+    // Fall back to raw manual text when no structured payload has been built yet
+    const requirements = requirementTextRef.current.trim() || manualTextRef.current.trim();
+    if (!requirements) { setFeedback('Add requirements text before generation.'); return; }
     setIsBusy(true);
     generateAllStepRef.current = 1;
-    const requirements = requirementTextRef.current;
 
     void (async () => {
       try {
         // ── Phase 1: Enhancement ∥ Scenarios ────────────────────────────────
         setGenerationProgress('phase1');
+        setTokenUsage(null);
         setFeedback('Phase 1 of 3: Enhancement + Scenarios running in parallel...');
         // Each stream reports its own cumulative char count. Track them separately
         // and sum for the feedback label so the two callbacks don't overwrite each other.
@@ -321,33 +427,38 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
           if (total > 0) setFeedback(`Phase 1 of 3: Enhancement + Scenarios running in parallel... (${total.toLocaleString()} chars)`);
         };
 
-        const [enhancement, scenarios] = await Promise.all([
+        const [{ normalized: enhancement, usage: enhUsage }, { parsed: scenarios, usage: scnUsage }] = await Promise.all([
           (async () => {
-            const { enhancement: raw } = await api.streamEnhancement(
+            const { enhancement: raw, usage } = await api.streamEnhancement(
               requirements,
               settingsRef.current,
               (e) => { if (e.type === 'chunk') { enhChars = e.chars; updatePhase1(); } },
+              activeProjectIdRef.current,
             );
             const normalized = { ...emptyEnhancement, ...(raw as Partial<RequirementEnhancement>) };
             setEnhancement(normalized);
             enhancementRef.current = normalized;
             onEnhancementReceived?.();
-            return normalized;
+            return { normalized, usage };
           })(),
           (async () => {
-            const { scenarios: raw } = await api.streamScenarios(
+            const { scenarios: raw, usage } = await api.streamScenarios(
               requirements,
               null,
               settingsRef.current,
               (e) => { if (e.type === 'chunk') { scnChars = e.chars; updatePhase1(); } },
+              activeProjectIdRef.current,
             );
             const parsed = (raw as ScenarioItem[]) ?? [];
             setScenarios(parsed);
             scenariosRef.current = parsed;
             onScenariosReceived?.();
-            return parsed;
+            return { parsed, usage };
           })(),
         ]);
+
+        const phase1Usage = mergeUsage(enhUsage, scnUsage);
+        if (phase1Usage) setTokenUsage(phase1Usage);
 
         if (scenarios.length === 0) throw new Error('Scenario generation returned no results. Please try again.');
 
@@ -355,7 +466,9 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         generateAllStepRef.current = 2;
         setGenerationProgress('phase2');
         setFeedback('Phase 2 of 3: Generating test cases from scenarios...');
-        const testCases = await runTestCases(scenarios);
+        const { result: testCases, usage: tcUsage } = await runTestCases(scenarios);
+        const phase2Usage = mergeUsage(phase1Usage, tcUsage);
+        if (phase2Usage) setTokenUsage(phase2Usage);
 
         if (testCases.length === 0) throw new Error('Test case generation returned no results. Please try again.');
 
@@ -363,7 +476,9 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         generateAllStepRef.current = 3;
         setGenerationProgress('phase3');
         setFeedback('Phase 3 of 3: Analyzing automation candidates...');
-        await runAutomation(requirements, enhancement, scenarios, testCases);
+        const { result: automation, usage: autoUsage } = await runAutomation(requirements, enhancement, scenarios, testCases);
+        const finalUsage = mergeUsage(phase2Usage, autoUsage);
+        if (finalUsage) setTokenUsage(finalUsage);
 
         generateAllStepRef.current = 0;
         onChainSettled?.();
@@ -371,13 +486,41 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         setFeedback('All artifacts generated successfully.');
         onGenerateAllDone?.();
         setTimeout(() => setGenerationProgress(''), 2000);
+
+        const activeProjectId = activeProjectIdRef.current ?? undefined;
+        void api.saveGeneration({
+          requirementText: requirements,
+          llmProvider: settingsRef.current.llmProvider,
+          llmModel: settingsRef.current.llmModel,
+          status: 'COMPLETED',
+          enhancement,
+          scenarios,
+          testCases,
+          automation,
+          projectId: activeProjectId,
+          promptTokens: finalUsage?.promptTokens,
+          completionTokens: finalUsage?.completionTokens,
+          totalTokens: finalUsage?.totalTokens,
+        }).then(({ id }) => {
+          onGenerationSaved?.(id, activeProjectId ?? null);
+        }).catch(() => { /* silent — DB write failure does not affect the completed generation */ });
       } catch (err) {
+        void api.saveGeneration({
+          requirementText: requirementTextRef.current,
+          llmProvider: settingsRef.current.llmProvider,
+          llmModel: settingsRef.current.llmModel,
+          status: 'FAILED',
+          enhancement: enhancementRef.current ?? null,
+          scenarios: scenariosRef.current.length ? scenariosRef.current : null,
+          testCases: testCasesRef.current.length ? testCasesRef.current : null,
+          automation: null,
+        }).catch(() => { /* silent */ });
         handleError(err);
       } finally {
         setIsBusy(false);
       }
     })();
-  }, [requirementTextRef, generateAllStepRef, setIsBusy, setFeedback, setGenerationProgress, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, handleError]);
+  }, [requirementTextRef, manualTextRef, generateAllStepRef, activeProjectIdRef, setIsBusy, setFeedback, setGenerationProgress, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, onGenerationSaved, handleError]);
 
   // ── Xray ────────────────────────────────────────────────────────────────────
 
@@ -388,13 +531,15 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     setFeedback('Pushing test cases to Xray...');
     void api.pushToXray(testCasesRef.current, [], settingsRef.current).then(({ pushed }) => {
       setIsBusy(false);
-      const statuses = (pushed as Array<{ localId: string; success: string; key: string; url: string; message: string; isValidationError?: boolean }>).map((item) => ({
+      const statuses = (pushed as Array<{ localId: string; success: string; key: string; url: string; message: string; isValidationError?: boolean; errorClass?: string; fixPath?: string }>).map((item) => ({
         localId: item.localId,
         success: item.success === 'true',
         key: item.key,
         url: item.url,
         message: item.message,
         isValidationError: item.isValidationError,
+        errorClass: item.errorClass as XrayPushedIssue['errorClass'],
+        fixPath: item.fixPath,
       }));
       setXrayPushedIssues((prev) => {
         const map = new Map(prev.map((i) => [i.localId, i]));
@@ -415,8 +560,11 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     setFeedback(`Retrying ${failedIds.length} failed push(es)...`);
     void api.pushToXray(testCasesRef.current, failedIds, settingsRef.current).then(({ pushed }) => {
       setIsBusy(false);
-      const statuses = (pushed as Array<{ localId: string; success: string; key: string; url: string; message: string }>).map((item) => ({
+      const statuses = (pushed as Array<{ localId: string; success: string; key: string; url: string; message: string; isValidationError?: boolean; errorClass?: string; fixPath?: string }>).map((item) => ({
         localId: item.localId, success: item.success === 'true', key: item.key, url: item.url, message: item.message,
+        isValidationError: item.isValidationError,
+        errorClass: item.errorClass as XrayPushedIssue['errorClass'],
+        fixPath: item.fixPath,
       }));
       setXrayPushedIssues((prev) => {
         const map = new Map(prev.map((i) => [i.localId, i]));
@@ -450,7 +598,9 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   }, [setIsBusy, setFeedback, setXrayPushedIssues, handleError]);
 
   // BUG-1 fix: actually run the settings restore on mount via useEffect instead of a dead void expression.
+  // Also restores the most recent completed generation so the user's last session is immediately available.
   useEffect(() => {
+    // Settings restore (synchronous)
     try {
       const saved = localStorage.getItem('tracelms-settings');
       if (saved) {
@@ -463,6 +613,38 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     } catch {
       setStatus('TraceLMs Cloud ready.');
     }
+
+    // Generation restore (async — must not block settings restore)
+    void (async () => {
+      try {
+        const { generation } = await api.fetchLatestGeneration();
+        if (!generation) return;
+
+        const enhancement = { ...emptyEnhancement, ...(generation.enhancement as Partial<RequirementEnhancement>) };
+        const scenarios = (generation.scenarios as ScenarioItem[]) ?? [];
+        const testCases = (generation.testCases as TestCaseItem[]) ?? [];
+        const automation = (generation.automation as AutomationAnalysis) ?? null;
+
+        setRequirementText(generation.requirementText);
+        requirementTextRef.current = generation.requirementText;
+
+        setEnhancement(enhancement);
+        enhancementRef.current = enhancement;
+
+        setScenarios(scenarios);
+        scenariosRef.current = scenarios;
+
+        setTestCases(testCases);
+        testCasesRef.current = testCases;
+
+        setAutomation(automation);
+        setRequirementsReviewed(true);
+
+        setFeedback(`Restored from last session — ${testCases.length} test case(s), ${scenarios.length} scenario(s).`);
+      } catch {
+        // silent — a failed restore must not block the app from loading
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount
 

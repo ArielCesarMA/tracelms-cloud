@@ -3,6 +3,7 @@ import { JiraXrayService, XrayManualTestCase } from '../services/jira/JiraXraySe
 import { BatchProcessor, DEFAULT_BATCH_CONFIG } from '../services/jira/BatchProcessor';
 import { PushHistoryStore } from '../services/storage/PushHistoryStore';
 import { buildTestCaseFingerprint } from '../utils/fingerprintUtil';
+import { requireProjectRole } from '../middleware/permissions';
 
 // Full test case shape: superset of both XrayManualTestCase and the fingerprinting subset.
 type PushableTestCase = XrayManualTestCase & { gherkin?: string; testData?: string; layer?: string };
@@ -30,7 +31,7 @@ interface XraySettings {
 }
 
 // POST /api/xray/push
-xrayRouter.post('/push', wrap(async (req: Request, res: Response) => {
+xrayRouter.post('/push', requireProjectRole('LEAD', 'EDITOR'), wrap(async (req: Request, res: Response) => {
   const { testCases, retryOnlyIds, settings } = req.body as {
     testCases: PushableTestCase[];
     retryOnlyIds?: string[];
@@ -62,21 +63,27 @@ xrayRouter.post('/push', wrap(async (req: Request, res: Response) => {
       ? testCases.filter((tc) => retryOnlyIds.includes(tc.id))
       : testCases;
 
-    const pushRecords = pushHistory.getAll();
+    const pushRecords = await pushHistory.getAll();
     const fingerprintByLocalId = new Map<string, string>();
     const casesToPush: typeof testCases = [];
-    const preStatuses: Array<{ localId: string; success: boolean; key?: string; url?: string; message: string; isValidationError?: boolean }> = [];
+    const preStatuses: Array<{ localId: string; success: boolean; key?: string; url?: string; message: string; isValidationError?: boolean; errorClass?: string; fixPath?: string }> = [];
 
     for (const tc of selected) {
       const errors = service.validateTestCase(tc);
       if (errors.length > 0) {
-        preStatuses.push({ localId: tc.id, success: false, message: errors.map((e) => e.error).join(' | '), isValidationError: true });
+        preStatuses.push({
+          localId: tc.id, success: false,
+          message: errors.map((e) => e.error).join(' | '),
+          isValidationError: true,
+          errorClass: 'validation',
+          fixPath: 'The LLM output is missing a required field. Regenerate test cases or check the prompt configuration.',
+        });
         continue;
       }
       const fp = buildTestCaseFingerprint(tc);
       const existing = pushRecords[fp];
       if (existing?.key) {
-        preStatuses.push({ localId: tc.id, success: true, key: existing.key, url: existing.url, message: 'Skipped duplicate: already pushed.' });
+        preStatuses.push({ localId: tc.id, success: true, key: existing.key, url: existing.url, message: 'Already pushed — skipped duplicate.', errorClass: 'duplicate' });
         continue;
       }
       fingerprintByLocalId.set(tc.id, fp);
@@ -97,7 +104,7 @@ xrayRouter.post('/push', wrap(async (req: Request, res: Response) => {
       if (!status.success || !status.key) continue;
       const fp = fingerprintByLocalId.get(status.localId);
       if (!fp) continue;
-      pushHistory.put(fp, {
+      await pushHistory.put(fp, {
         fingerprint: fp,
         key: status.key,
         url: status.url || (base ? `${base}/browse/${status.key}` : ''),
@@ -111,7 +118,9 @@ xrayRouter.post('/push', wrap(async (req: Request, res: Response) => {
       key: s.key ?? '',
       url: s.url || (s.key && base ? `${base}/browse/${s.key}` : ''),
       message: s.message ?? '',
-      isValidationError: s.isValidationError
+      isValidationError: s.isValidationError,
+      errorClass: s.errorClass ?? (s.success ? 'success' : 'permanent'),
+      fixPath: s.fixPath ?? '',
     }));
 
     res.json({ pushed: allStatuses });
@@ -133,7 +142,7 @@ xrayRouter.post('/preview', wrap(async (req: Request, res: Response) => {
   }
 
   const service = new JiraXrayService(settings.jiraUrl, settings.jiraEmail, settings.jiraApiToken, settings.jiraProjectKey, settings.xrayClientId, settings.xrayClientSecret);
-  const pushRecords = pushHistory.getAll();
+  const pushRecords = await pushHistory.getAll();
 
   const preview = { totalCases: testCases.length, validationErrors: 0, duplicates: 0, willPush: 0, details: [] as unknown[] };
 
@@ -158,7 +167,7 @@ xrayRouter.post('/preview', wrap(async (req: Request, res: Response) => {
 }));
 
 // POST /api/xray/clear-history
-xrayRouter.post('/clear-history', (_req: Request, res: Response) => {
-  pushHistory.clear();
+xrayRouter.post('/clear-history', wrap(async (_req: Request, res: Response) => {
+  await pushHistory.clear();
   res.json({ message: 'Xray push history cleared.' });
-});
+}));

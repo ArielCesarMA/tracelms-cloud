@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
+import { LoginPage } from './pages/LoginPage';
+import { getAuthToken, clearAuthToken, fetchProjects, linkGenerationToProject } from './api/client';
+import type { LatestGenerationRecord } from './api/client';
+import type { Project } from './types';
+import { useAuth, canWrite, canPush, ROLE_LABELS, ROLE_DESCRIPTIONS } from './contexts/AuthContext';
 import {
   type Settings,
   type ParsedFile,
   type JiraIssueSummary,
   type UploadDraft,
+  type ExtractedRequirement,
   type JiraMode,
   type TabKey,
   type RequirementEnhancement,
@@ -13,11 +19,12 @@ import {
   type XrayPushedIssue,
   type XrayPushPreview,
   type XrayPushProgress,
+  type TokenUsage,
   defaultSettings,
   emptyEnhancement,
   getProviderModels,
 } from './types';
-import { downloadFile, escapeCsvCell, inferScenarioType } from './utils';
+import { downloadFile, escapeCsvCell, inferScenarioType, buildRequirementsPayload, resizeImageIfNeeded, ACCEPTED_IMAGE_MIMES, IMAGE_SIZE_LIMIT_BYTES } from './utils';
 import { useTraceLMMessages } from './hooks/useTraceLMMessages';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SettingsTab } from './tabs/SettingsTab';
@@ -29,9 +36,33 @@ import { AutomationTab } from './tabs/AutomationTab';
 import { LLMProvidersTab } from './tabs/LLMProvidersTab';
 import { ProjectsTab } from './tabs/ProjectsTab';
 import { OutputTab } from './tabs/OutputTab';
+import { DocumentsTab } from './tabs/DocumentsTab';
+import { PromptsTab } from './tabs/PromptsTab';
 import { GuideTab } from './tabs/GuideTab';
 
+// Auth wrapper — prevents AppInner from mounting (and running all its hooks)
+// until authentication is confirmed. This is the correct way to gate hook-heavy
+// components: move the conditional ABOVE the component boundary, not inside it.
 function App(): JSX.Element {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  // Check token synchronously before first paint to avoid flash of main UI
+  useLayoutEffect(() => {
+    setIsAuthenticated(!!getAuthToken());
+  }, []);
+
+  if (isAuthenticated === null) return <></>;
+  if (!isAuthenticated) {
+    return <LoginPage onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
+  return <AppInner onLogout={() => { clearAuthToken(); setIsAuthenticated(false); }} />;
+}
+
+interface AppInnerProps { onLogout: () => void; }
+
+function AppInner({ onLogout }: AppInnerProps): JSX.Element {
+  const { user: authUser } = useAuth();
+  const userRole = authUser?.role;
   const [status, setStatus] = useState('Ready');
   const [feedback, setFeedback] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('requirements');
@@ -40,6 +71,7 @@ function App(): JSX.Element {
   const [requirementText, setRequirementText] = useState('');
   const [uploadDrafts, setUploadDrafts] = useState<UploadDraft[]>([]);
   const [parsedFiles, setParsedFiles] = useState<ParsedFile[]>([]);
+  const [documentWarnings, setDocumentWarnings] = useState<string[]>([]);
 
   const [jiraMode, setJiraMode] = useState<JiraMode>('single');
   const [singleIssueKey, setSingleIssueKey] = useState('');
@@ -49,6 +81,10 @@ function App(): JSX.Element {
   const [storyOptions, setStoryOptions] = useState<JiraIssueSummary[]>([]);
   const [selectedStoryKeys, setSelectedStoryKeys] = useState<string[]>([]);
   const [pulledIssues, setPulledIssues] = useState<JiraIssueSummary[]>([]);
+  const [uploadedRequirements, setUploadedRequirements] = useState<ExtractedRequirement[]>([]);
+  const [jiraRequirements, setJiraRequirements] = useState<ExtractedRequirement[]>([]);
+  const [instructionText, setInstructionText] = useState('');
+  const [manualText, setManualText] = useState('');
 
   const [enhancement, setEnhancement] = useState<RequirementEnhancement>(emptyEnhancement);
   const [enhancementGeneratedAt, setEnhancementGeneratedAt] = useState<Date | null>(null);
@@ -61,7 +97,28 @@ function App(): JSX.Element {
   const [xrayPushPreview, setXrayPushPreview] = useState<XrayPushPreview | null>(null);
   const [xrayPushProgress, setXrayPushProgress] = useState<XrayPushProgress | null>(null);
   const [generationProgress, setGenerationProgress] = useState('');
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+
+  // ── Active project (persisted in localStorage) ────────────────────────────
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    () => localStorage.getItem('tracelms-active-project-id')
+  );
+  const [activeProjectName, setActiveProjectName] = useState<string | null>(
+    () => localStorage.getItem('tracelms-active-project-name')
+  );
+
+  // ── Save-to-project state (Option C) ──────────────────────────────────────
+  // After a generation is saved, show a confirmation banner.
+  const [savedBanner, setSavedBanner] = useState<{ projectName: string } | null>(null);
+  // When generation completes with no active project, show the picker modal.
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
+  // The DB id of the most recently saved generation (for linking via PATCH).
+  const [lastSavedGenerationId, setLastSavedGenerationId] = useState<string | null>(null);
+  // Projects list for the picker modal (loaded on demand).
+  const [pickerProjects, setPickerProjects] = useState<Project[]>([]);
+  const [pickerBusy, setPickerBusy] = useState(false);
+
   // Tracks which Generate All step last failed + the exact error message.
   // stepKey: null | 'enhancement+scenarios' | 'testCases' | 'automation'
   const [failedStep, setFailedStep] = useState<string | null>(null);
@@ -78,6 +135,11 @@ function App(): JSX.Element {
   const requirementsReviewedRef = useRef(requirementsReviewed);
   const uploadDraftsRef = useRef(uploadDrafts);
   const generateAllStepRef = useRef<number>(0);
+  const uploadedRequirementsRef = useRef(uploadedRequirements);
+  const jiraRequirementsRef = useRef(jiraRequirements);
+  const instructionTextRef = useRef(instructionText);
+  const manualTextRef = useRef(manualText);
+  const activeProjectIdRef = useRef(activeProjectId);
 
   useEffect(() => { requirementTextRef.current = requirementText; }, [requirementText]);
   useEffect(() => { enhancementRef.current = enhancement; }, [enhancement]);
@@ -88,6 +150,20 @@ function App(): JSX.Element {
   useEffect(() => { xrayPushedIssuesRef.current = xrayPushedIssues; }, [xrayPushedIssues]);
   useEffect(() => { requirementsReviewedRef.current = requirementsReviewed; }, [requirementsReviewed]);
   useEffect(() => { uploadDraftsRef.current = uploadDrafts; }, [uploadDrafts]);
+  useEffect(() => { uploadedRequirementsRef.current = uploadedRequirements; }, [uploadedRequirements]);
+  useEffect(() => { jiraRequirementsRef.current = jiraRequirements; }, [jiraRequirements]);
+  useEffect(() => { instructionTextRef.current = instructionText; }, [instructionText]);
+  useEffect(() => { manualTextRef.current = manualText; }, [manualText]);
+  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
+
+  // Sync requirementText payload whenever extracted requirements or instructions change.
+  // Guard: only update when new-style state exists (preserves DB-restored legacy requirementText).
+  useEffect(() => {
+    if (!uploadedRequirements.length && !jiraRequirements.length && !instructionText.trim()) return;
+    const payload = buildRequirementsPayload(uploadedRequirements, jiraRequirements, instructionText);
+    setRequirementText(payload);
+    requirementTextRef.current = payload;
+  }, [uploadedRequirements, jiraRequirements, instructionText]);
 
   const availableModels = useMemo(() => getProviderModels(settings.llmProvider), [settings.llmProvider]);
 
@@ -106,13 +182,15 @@ function App(): JSX.Element {
     pushTestCasesToXray, retryFailedPushes, previewXrayPush, clearXrayHistory,
   } = useTraceLMMessages({
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
-    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef,
+    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, manualTextRef,
+    activeProjectIdRef,
     setStatus, setFeedback, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
-    setParsedFiles, setStoryOptions, setPulledIssues,
+    setParsedFiles, setDocumentWarnings, setUploadedRequirements, setJiraRequirements,
+    setStoryOptions, setPulledIssues,
     setEnhancement, setScenarios, setTestCases,
     setXrayPushedIssues, setAutomation,
-    setXrayPushPreview, setXrayPushProgress, setGenerationProgress,
+    setXrayPushPreview, setXrayPushProgress, setGenerationProgress, setTokenUsage,
     onEnhancementReceived: () => setEnhancementGeneratedAt(new Date()),
     onScenariosReceived: () => setScenariosGeneratedAt(new Date()),
     onChainSettled: () => { /* watchdog is now handled inside the hook */ },
@@ -120,6 +198,20 @@ function App(): JSX.Element {
     onGenerateAllDone: () => { setActiveTab('automation'); setFailedStep(null); setFailedMessage(''); },
     // Per-step retry: record which phase failed and the exact error so the banner is actionable.
     onGenerateAllFailed: (stepKey, errorMessage) => { setFailedStep(stepKey); setFailedMessage(errorMessage); },
+    // Option C: after save, show banner or project picker.
+    onGenerationSaved: (generationId, projectId) => {
+      setLastSavedGenerationId(generationId);
+      if (projectId && activeProjectName) {
+        setSavedBanner({ projectName: activeProjectName });
+        setTimeout(() => setSavedBanner(null), 6000);
+      } else {
+        // Load projects list for the picker modal
+        void fetchProjects().then(({ projects }) => {
+          setPickerProjects(projects);
+          setShowProjectPicker(true);
+        }).catch(() => { /* silent — picker is optional */ });
+      }
+    },
   });
 
   // ── Settings ──────────────────────────────────────────────────────────────
@@ -151,15 +243,71 @@ function App(): JSX.Element {
     const files = event.target.files;
     if (!files || files.length === 0) return;
     const next = await Promise.all(
-      Array.from(files).map(async (file) => ({
-        name: file.name,
-        mimeType: file.type,
-        contentBase64: await toBase64(file),
-      }))
+      Array.from(files).map(async (file): Promise<UploadDraft> => {
+        const isImageFile = (ACCEPTED_IMAGE_MIMES as readonly string[]).includes(file.type);
+        // Client-side size check for images
+        if (isImageFile && file.size > IMAGE_SIZE_LIMIT_BYTES) {
+          return {
+            name: file.name,
+            mimeType: file.type,
+            contentBase64: '',
+            isImage: true,
+            thumbnailUrl: URL.createObjectURL(file),
+            sizeError: 'Image too large — maximum 10MB. Try compressing or cropping.',
+          };
+        }
+        if (isImageFile) {
+          const contentBase64 = await resizeImageIfNeeded(file);
+          return {
+            name: file.name,
+            mimeType: file.type,
+            contentBase64,
+            isImage: true,
+            thumbnailUrl: URL.createObjectURL(file),
+          };
+        }
+        return {
+          name: file.name,
+          mimeType: file.type,
+          contentBase64: await toBase64(file),
+        };
+      })
     );
     setUploadDrafts(next);
     setFeedback(`${next.length} file(s) selected.`);
   }, [toBase64]);
+
+  const handleRequirementUpdate = useCallback((reqId: string, field: keyof ExtractedRequirement, value: string): void => {
+    setUploadedRequirements((prev) => {
+      if (field === ('__undo__' as keyof ExtractedRequirement)) {
+        const { row, index } = JSON.parse(value) as { row: ExtractedRequirement; index: number };
+        const next = [...prev];
+        next.splice(index, 0, row);
+        return next;
+      }
+      return prev.map((r) => r.reqId === reqId ? { ...r, [field]: value } : r);
+    });
+  }, []);
+
+  const handleRequirementDelete = useCallback((reqId: string): void => {
+    setUploadedRequirements((prev) => prev.filter((r) => r.reqId !== reqId));
+  }, []);
+
+  const handleJiraRequirementUpdate = useCallback((reqId: string, field: keyof ExtractedRequirement, value: string): void => {
+    setJiraRequirements((prev) => {
+      if (field === ('__undo__' as keyof ExtractedRequirement)) {
+        const { row, index } = JSON.parse(value) as { row: ExtractedRequirement; index: number };
+        const next = [...prev];
+        next.splice(index, 0, row);
+        return next;
+      }
+      return prev.map((r) => r.reqId === reqId ? { ...r, [field]: value } : r);
+    });
+  }, []);
+
+  const handleJiraRequirementDelete = useCallback((reqId: string): void => {
+    setJiraRequirements((prev) => prev.filter((r) => r.reqId !== reqId));
+  }, []);
 
   const searchStories = useCallback((): void => {
     searchStoriesAction(storyQuery);
@@ -187,6 +335,11 @@ function App(): JSX.Element {
     setRequirementsReviewed(false);
     setUploadDrafts([]);
     setParsedFiles([]);
+    setDocumentWarnings([]);
+    setUploadedRequirements([]);
+    setJiraRequirements([]);
+    setInstructionText('');
+    setManualText('');
     setEnhancement(emptyEnhancement);
     setEnhancementGeneratedAt(null);
     setScenarios([]);
@@ -295,6 +448,48 @@ function App(): JSX.Element {
     }));
   }, []);
 
+  // ── Active project ────────────────────────────────────────────────────────
+
+  const handleProjectActivate = useCallback((project: Project | null): void => {
+    if (project) {
+      setActiveProjectId(project.id);
+      setActiveProjectName(project.name);
+      localStorage.setItem('tracelms-active-project-id', project.id);
+      localStorage.setItem('tracelms-active-project-name', project.name);
+    } else {
+      setActiveProjectId(null);
+      setActiveProjectName(null);
+      localStorage.removeItem('tracelms-active-project-id');
+      localStorage.removeItem('tracelms-active-project-name');
+    }
+  }, []);
+
+  const handlePickerSave = useCallback(async (project: Project): Promise<void> => {
+    if (!lastSavedGenerationId) return;
+    setPickerBusy(true);
+    try {
+      await linkGenerationToProject(lastSavedGenerationId, project.id);
+      setShowProjectPicker(false);
+      setSavedBanner({ projectName: project.name });
+      setTimeout(() => setSavedBanner(null), 6000);
+    } catch {
+      // silent — linking is best-effort
+      setShowProjectPicker(false);
+    } finally {
+      setPickerBusy(false);
+    }
+  }, [lastSavedGenerationId]);
+
+  const handleGenerationLoad = useCallback((gen: LatestGenerationRecord): void => {
+    setRequirementText(gen.requirementText);
+    setEnhancement((gen.enhancement as RequirementEnhancement) ?? emptyEnhancement);
+    setScenarios((gen.scenarios as ScenarioItem[]) ?? []);
+    setTestCases((gen.testCases as TestCaseItem[]) ?? []);
+    setAutomation((gen.automation as AutomationAnalysis) ?? null);
+    setFeedback('Generation loaded.');
+    setActiveTab('requirements');
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   const enhancementTotal = useMemo(
@@ -312,32 +507,100 @@ function App(): JSX.Element {
 
   const nav = (key: TabKey): void => setActiveTab(key);
 
-  const generateItems: { key: TabKey; label: string; step: number; count?: number }[] = [
-    { key: 'requirements', label: 'Requirements',  step: 1 },
-    { key: 'enhancement',  label: 'Enhancement',   step: 2, count: enhancementTotal || undefined },
-    { key: 'scenarios',    label: 'Scenarios',      step: 3, count: scenarios.length || undefined },
-    { key: 'testCases',    label: 'Test Cases',     step: 4, count: testCases.length || undefined },
-    { key: 'automation',   label: 'Automation',     step: 5, count: automation?.items.length || undefined },
+  const generateItems: { key: TabKey; label: string; icon: string; count?: number; isFirst?: boolean; isPending?: boolean }[] = [
+    { key: 'requirements', label: 'Requirements', icon: 'ti-file-text', isFirst: true },
+    { key: 'enhancement',  label: 'Enhancement',  icon: 'ti-sparkles',  count: enhancementTotal || undefined },
+    { key: 'scenarios',    label: 'Scenarios',     icon: 'ti-sitemap',   count: scenarios.length || undefined },
+    { key: 'testCases',    label: 'Test Cases',    icon: 'ti-checklist', count: testCases.length || undefined },
+    { key: 'automation',   label: 'Automation',    icon: 'ti-robot',     count: automation?.items.length || undefined },
+    { key: 'documents',    label: 'Documents',     icon: 'ti-file-type-doc', isPending: !automation?.items.length },
   ];
 
-  const settingsItems: { key: TabKey; label: string }[] = [
-    { key: 'integrations',  label: 'Integrations' },
-    { key: 'llm-providers', label: 'LLM Providers' },
-    { key: 'projects',      label: 'Projects' },
-    { key: 'output',        label: 'Output' },
+  const allGenerateEmpty =
+    !enhancementTotal &&
+    !scenarios.length &&
+    !testCases.length &&
+    !automation?.items.length &&
+    !uploadedRequirements.length &&
+    !jiraRequirements.length;
+
+  const workspaceItems: { key: TabKey; label: string; icon: string }[] = [
+    { key: 'projects',   label: 'Projects',   icon: 'ti-folder' },
+    { key: 'prompts',    label: 'Prompts',    icon: 'ti-message-bolt' },
+    { key: 'output',     label: 'Output',     icon: 'ti-file-export' },
+  ];
+
+  const utilityItems: { key: TabKey; label: string; icon: string }[] = [
+    { key: 'llm-providers', label: 'LLM Providers', icon: 'ti-cpu' },
+    { key: 'integrations',  label: 'Settings',      icon: 'ti-settings' },
   ];
 
   return (
     <div className="app-layout">
+
+      {/* ── Save-to-project banner ───────────────────────────────────────── */}
+      {savedBanner && (
+        <div className="save-banner" role="status">
+          <i className="ti ti-circle-check" aria-hidden="true" />
+          <span>Saved to <strong>{savedBanner.projectName}</strong></span>
+          <button className="save-banner-link" onClick={() => { setSavedBanner(null); setActiveTab('projects'); }}>
+            View in Projects →
+          </button>
+          <button className="save-banner-close" onClick={() => setSavedBanner(null)} aria-label="Dismiss">
+            <i className="ti ti-x" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Project picker modal (no active project at generation complete) ─ */}
+      {showProjectPicker && (
+        <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Save to project">
+          <div className="proj-modal save-picker-modal">
+            <h3>Save to Project</h3>
+            <p className="save-picker-hint">Generation complete — select a project to link these artifacts:</p>
+            {pickerProjects.length === 0 ? (
+              <p className="save-picker-empty">No projects found. <button className="link-btn" onClick={() => { setShowProjectPicker(false); setActiveTab('projects'); }}>Create one →</button></p>
+            ) : (
+              <ul className="save-picker-list">
+                {pickerProjects.map((proj) => (
+                  <li key={proj.id}>
+                    <button
+                      className="save-picker-item"
+                      disabled={pickerBusy}
+                      onClick={() => void handlePickerSave(proj)}
+                    >
+                      <span className="save-picker-key">{proj.key}</span>
+                      <span className="save-picker-name">{proj.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="button-row">
+              <button type="button" onClick={() => setShowProjectPicker(false)}>
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
       <aside className="sidebar" aria-label="Main navigation">
 
         {/* Brand */}
         <div className="sidebar-brand">
-          <div className="sidebar-logo" aria-hidden="true">T</div>
+          <div className="sidebar-logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+              <circle cx="12" cy="4.5" r="2.5" fill="white"/>
+              <line x1="12" y1="7" x2="6" y2="17" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+              <line x1="12" y1="7" x2="18" y2="17" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+              <circle cx="6" cy="19.5" r="2.5" fill="white"/>
+              <circle cx="18" cy="19.5" r="2.5" fill="white"/>
+            </svg>
+          </div>
           <div className="sidebar-brand-text">
-            <span className="sidebar-brand-name">TraceLMs</span>
+            <span className="sidebar-brand-name">trace<span className="sidebar-brand-lms">LMs</span></span>
             <span className="sidebar-brand-sub">Cloud</span>
           </div>
         </div>
@@ -348,7 +611,43 @@ function App(): JSX.Element {
           {/* Generate section */}
           <div className="sidebar-section">
             <span className="sidebar-section-label">Generate</span>
-            {generateItems.map(({ key, label, step, count }) => (
+            <div className="sidebar-pipeline">
+              {generateItems.map(({ key, label, icon, count, isFirst, isPending }) => {
+                const hasData = isFirst
+                  ? !allGenerateEmpty
+                  : count !== undefined && count > 0;
+                const showPending = isPending || (!hasData && !isFirst);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`sidebar-item${activeTab === key ? ' active' : ''}${showPending ? ' sidebar-item--pending' : ''}`}
+                    onClick={() => nav(key)}
+                    aria-current={activeTab === key ? 'page' : undefined}
+                    data-has-data={hasData ? 'true' : 'false'}
+                  >
+                    <span className="sidebar-item-inner">
+                      <i className={`ti ${icon} sidebar-icon`} aria-hidden="true" />
+                      {label}
+                      {isFirst && allGenerateEmpty && (
+                        <span className="sidebar-start-badge" aria-label="Start here">START</span>
+                      )}
+                    </span>
+                    {count !== undefined && (
+                      <span className="sidebar-count" aria-label={`${count} items`}>{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="sidebar-divider" aria-hidden="true" />
+
+          {/* Workspace section */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-label">Workspace</span>
+            {workspaceItems.map(({ key, label, icon }) => (
               <button
                 key={key}
                 type="button"
@@ -357,30 +656,9 @@ function App(): JSX.Element {
                 aria-current={activeTab === key ? 'page' : undefined}
               >
                 <span className="sidebar-item-inner">
-                  <span className="sidebar-step" aria-hidden="true">{step}</span>
+                  <i className={`ti ${icon} sidebar-icon`} aria-hidden="true" />
                   {label}
                 </span>
-                {count !== undefined && (
-                  <span className="sidebar-count" aria-label={`${count} items`}>{count}</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="sidebar-divider" aria-hidden="true" />
-
-          {/* Settings section */}
-          <div className="sidebar-section">
-            <span className="sidebar-section-label">Settings</span>
-            {settingsItems.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                className={`sidebar-item${activeTab === key ? ' active' : ''}`}
-                onClick={() => nav(key)}
-                aria-current={activeTab === key ? 'page' : undefined}
-              >
-                <span className="sidebar-item-inner">{label}</span>
               </button>
             ))}
           </div>
@@ -395,17 +673,74 @@ function App(): JSX.Element {
               onClick={() => nav('guide')}
               aria-current={activeTab === 'guide' ? 'page' : undefined}
             >
-              <span className="sidebar-item-inner">Guide</span>
+              <span className="sidebar-item-inner">
+                <i className="ti ti-book sidebar-icon" aria-hidden="true" />
+                Guide
+              </span>
             </button>
           </div>
 
         </nav>
 
-        {/* Footer — status */}
+        {/* Utility nav — pinned above footer */}
+        <div className="sidebar-utility">
+          {utilityItems.map(({ key, label, icon }) => (
+            <button
+              key={key}
+              type="button"
+              className={`sidebar-item${activeTab === key ? ' active' : ''}`}
+              onClick={() => nav(key)}
+              aria-current={activeTab === key ? 'page' : undefined}
+            >
+              <span className="sidebar-item-inner">
+                <i className={`ti ${icon} sidebar-icon`} aria-hidden="true" />
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Footer — status + logout */}
         <div className="sidebar-footer" role="status" aria-live="polite">
           <span className={statusDotClass} aria-hidden="true" />
           <span className="sidebar-status-text">{status}</span>
           <span className="sidebar-version">v0.1.0</span>
+          {activeProjectName && (
+            <div className="sidebar-active-project" title={`Active project: ${activeProjectName}`}>
+              <i className="ti ti-folder-filled" aria-hidden="true" />
+              <span className="sidebar-active-project-name">{activeProjectName}</span>
+            </div>
+          )}
+          {userRole && (
+            <div
+              className={`sidebar-role-badge sidebar-role-badge--${userRole.toLowerCase()}`}
+              title={ROLE_DESCRIPTIONS[userRole]}
+              aria-label={`Your role: ${ROLE_LABELS[userRole]}`}
+            >
+              {ROLE_LABELS[userRole]}
+            </div>
+          )}
+          <button
+            onClick={onLogout}
+            title="Sign out"
+            style={{
+              marginTop: 'var(--space-2)',
+              width: '100%',
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              color: 'var(--text-secondary)',
+              fontSize: 'var(--text-xs)',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <i className="ti ti-logout" aria-hidden="true" />
+            Sign out
+          </button>
         </div>
 
       </aside>
@@ -459,10 +794,15 @@ function App(): JSX.Element {
         {activeTab === 'requirements' && (
           <ErrorBoundary tabName="Requirements">
             <RequirementsTab
-              requirementText={requirementText}
+              activeProjectId={activeProjectId}
+              activeProjectName={activeProjectName}
+              onGoToProjects={() => setActiveTab('projects')}
+              uploadedRequirements={uploadedRequirements}
+              jiraRequirements={jiraRequirements}
+              instructionText={instructionText}
+              manualText={manualText}
               requirementsReviewed={requirementsReviewed}
               generationProgress={generationProgress}
-              parsedFiles={parsedFiles}
               uploadDrafts={uploadDrafts}
               jiraMode={jiraMode}
               singleIssueKey={singleIssueKey}
@@ -471,15 +811,22 @@ function App(): JSX.Element {
               storyQuery={storyQuery}
               storyOptions={storyOptions}
               selectedStoryKeys={selectedStoryKeys}
-              pulledIssues={pulledIssues}
               isBusy={isBusy}
               feedback={feedback}
-              onRequirementTextChange={handleRequirementTextChange}
+              selectedProvider={settings.llmProvider}
+              onInstructionTextChange={setInstructionText}
+              onManualTextChange={setManualText}
               onReviewedChange={setRequirementsReviewed}
               onGenerateAll={generateAll}
               onClearAll={clearAll}
               onFileChange={handleFileChange}
               onParseFiles={parseSelectedFiles}
+              documentWarnings={documentWarnings}
+              onDismissWarnings={() => setDocumentWarnings([])}
+              onRequirementUpdate={handleRequirementUpdate}
+              onRequirementDelete={handleRequirementDelete}
+              onJiraRequirementUpdate={handleJiraRequirementUpdate}
+              onJiraRequirementDelete={handleJiraRequirementDelete}
               onJiraModeChange={setJiraMode}
               onSingleKeyChange={setSingleIssueKey}
               onMultipleKeysChange={setMultipleIssueKeys}
@@ -530,6 +877,8 @@ function App(): JSX.Element {
               xrayPushedIssues={xrayPushedIssues}
               isBusy={isBusy}
               feedback={feedback}
+              generationId={lastSavedGenerationId}
+              onTestCasesChange={setTestCases}
               onGenerateTestCases={generateTestCases}
               onPreviewPush={previewXrayPush}
               onPushToXray={pushTestCasesToXray}
@@ -575,13 +924,35 @@ function App(): JSX.Element {
 
         {activeTab === 'projects' && (
           <ErrorBoundary tabName="Projects">
-            <ProjectsTab />
+            <ProjectsTab
+              activeProjectId={activeProjectId}
+              onProjectActivate={handleProjectActivate}
+              onGenerationLoad={handleGenerationLoad}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'documents' && (
+          <ErrorBoundary tabName="Documents">
+            <DocumentsTab
+              activeProjectId={activeProjectId}
+              activeProjectName={activeProjectName}
+              settings={settings}
+              isBusy={isBusy}
+              onBusyChange={setIsBusy}
+            />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'prompts' && (
+          <ErrorBoundary tabName="Prompts">
+            <PromptsTab activeProjectId={activeProjectId} activeProjectName={activeProjectName} />
           </ErrorBoundary>
         )}
 
         {activeTab === 'output' && (
           <ErrorBoundary tabName="Output">
-            <OutputTab />
+            <OutputTab tokenUsage={tokenUsage} />
           </ErrorBoundary>
         )}
 

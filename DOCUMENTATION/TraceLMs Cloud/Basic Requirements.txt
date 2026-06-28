@@ -1,0 +1,56 @@
+When a user types into the 'Password' registration field, a real-time hint list must dynamically change color to green as individual criteria are met (e.g., minimum 8 characters, at least 1 number). If the user attempts to click 'Submit' while criteria are missing, the submit button must remain visually disabled, and an explicit inline validation error message must appear.
+
+
+=====================================================================
+Requirement: User Registration API
+
+Endpoint : POST /api/v1/users/register
+
+Description: The API allows new users to register an account.
+
+
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john.doe@email.com",
+  "password": "Password@123",
+  "confirmPassword": "Password@123",
+  "mobileNumber": "9876543210",
+  "dateOfBirth": "1995-06-15"
+}
+
+
+Business Rules
+
+-firstName and lastName are mandatory.
+
+-Names must contain only alphabetic characters and spaces.
+
+-Email is mandatory and must be unique.
+
+-Email must follow a valid email format.
+
+-Password must:
+  *Be 8–20 characters long.
+
+  *Contain at least one uppercase letter.
+
+  *Contain at least one lowercase letter.
+
+  *Contain at least one number.
+
+  *Contain at least one special character.
+
+-confirmPassword must match password.
+
+
+=====================================
+
+You are a Principal Full-Stack Software Engineer, Senior UI/UX Designer, and Brand Designer with 15+ years of experience building award-winning web applications.
+
+In the Requirements section, can inspect and do the following:
+ 1. A button to clear the content of the requirements, Scenarios, test cases and Automation so that i can generate data from new requirement.
+ 2. Can the Free Text Input named differently but should still provide user the concept that the box is a free input text
+ 3. The "Free Text Input", "File Upload Parsing" and "Pull from Jira" sections, can these have a separator or maybe put in a box just like in the Integrations just to emphasize that these 3 are having different functions
+
+

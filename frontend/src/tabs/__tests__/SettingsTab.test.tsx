@@ -18,14 +18,14 @@ const baseProps = {
 describe('SettingsTab', () => {
   it('renders without crashing', () => {
     render(<SettingsTab {...baseProps} />);
-    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('Integrations')).toBeTruthy();
   });
 
   it('renders all three action buttons', () => {
     render(<SettingsTab {...baseProps} />);
     expect(screen.getByText('Save Settings')).toBeTruthy();
     expect(screen.getByText('Test LLM')).toBeTruthy();
-    expect(screen.getByText('Test Jira/Xray')).toBeTruthy();
+    expect(screen.getByText('Test Jira / Xray')).toBeTruthy();
   });
 
   it('disables buttons when isBusy', () => {

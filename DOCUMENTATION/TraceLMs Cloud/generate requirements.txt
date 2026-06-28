@@ -1,0 +1,56 @@
+generate requirements  x
+better LLM  provides better data  ok
+storage for created artifacts  
+Test Plan and Test Strategy creation  x
+  - Need format / template
+Script Creation  TypeScript, Playwright, WebdriveIO x
+Gherkin View - to be used in script generation 
+Not limit the automation language
+
+
+=========================
+1. Automation Workflow - IN PROGRESS c/o Sir Vijay
+2. Performance Testing Workflow  c/o Sucheta
+3. Domain / Repository c/o Sir Ganesh and Sir Jacky
+4. Test Plan and Test Strategy creation  x
+  - Need format / template
+5. Script Generation should not limit only few Prog Lang.
+figma
+
+=========================
+
+In the Requirements tab there will be a change in logic.
+
+Current:
+1. Requirement Editor = Load requirements via any source (Manual paste, File Upload or pulled in JIRA)
+2. File Upload Parsing = Upload a document and parse its content into the Requirement Editor above. Supports .txt, .md, .docx, .pdf.
+3. Pull from Jira = Fetch requirements directly from Jira issues, epics, or stories.
+
+Proposed:
+1. "Requirement Editor" will be renamed into "Instructions (Optional) and its purpose is "Add additional instructions to follow when processing this artifact generation"
+2. "File Upload Parsing" will be renamed to "Upload & Extract Requirements". The main goal of this section will be the following:
+   A. Upload Document
+   B. Parse the content and Analyze the content and extract the requirements out of it
+   C. Review Extracted Requirements by applying the best practices in writing the requirements
+   D. Display the finalized requirement in a table format. Columns or fields are the following: 
+           D1. Req ID
+           D2. Summary
+           D3. Description
+           D4. Issue Type (Epic, Story)
+           D5. Requirement Type (Functional, Non-Functional, Business Rule, Validation, Security, Integration, UI/UX, Data, Reporting, Compliance)
+           D6. Priority (Critical, High, Medium, Low)           	
+     * the section box will expand based on the requirements generated in the table
+3. "Pull from Jira" will be renamed "Import from Jira". Same purpose: Fetch requirements directly from Jira issues, epics, or stories.
+        * Once imported, it will be displayed in a table format. 
+        * Columns or fields are the following:
+           A. Req ID
+           B. Summary
+           C. Description
+           D. Issue Type (Epic, Story)
+           E. Requirement Type (Functional, Non-Functional, Business Rule, Validation, Security, Integration, UI/UX, Data, Reporting, Compliance)
+           F. Priority (Critical, High, Medium, Low) 
+
+====================================
+
+Can you check the best possible and efficient way in the market as of today to create this feature?
+

@@ -6,7 +6,9 @@ const requiredPrompts = [
   'requirement-enhancement.txt',
   'scenario-generation.txt',
   'test-case-generation.txt',
-  'automation-analysis.txt'
+  'automation-analysis.txt',
+  'test-plan-generation.txt',
+  'test-strategy-generation.txt',
 ];
 
 const errors = [];

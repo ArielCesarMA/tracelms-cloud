@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type RequirementEnhancement } from '../types';
 import { CopyButton } from '../components/CopyButton';
+import { EmptyState } from '../components/EmptyState';
 import { downloadFile, escapeCsvCell } from '../utils';
 
 type CardKey = keyof RequirementEnhancement;
@@ -178,12 +179,12 @@ export const EnhancementTab = memo(function EnhancementTab({
 
 
       {!hasFindings ? (
-        <div className="empty-state">
-          <span className="empty-state-icon">🔍</span>
-          <p className="empty-state-title">No Enhancement Analysis Yet</p>
-          <p className="empty-state-action">Click Generate Enhancement above to start.</p>
-          <p className="empty-state-tip">Tip: Add your requirements text first — richer input produces more targeted findings.</p>
-        </div>
+        <EmptyState
+          icon="🔍"
+          title="No Enhancement Analysis Yet"
+          action="Click Generate Enhancement above to start."
+          tip="Tip: Add your requirements text first — richer input produces more targeted findings."
+        />
       ) : (
         <>
           <div className="enh-summary">

@@ -2,6 +2,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { LLMService } from '../services/llm/LLMService';
 import { LLMProviderName } from '../types';
 import { loadSettings, saveSettings } from '../services/SettingsService';
+import { AuthenticatedRequest } from '../middleware/auth';
+import { requireRole } from '../middleware/permissions';
 
 export const settingsRouter = Router();
 
@@ -12,8 +14,9 @@ const wrap = (fn: (req: Request, res: Response, next: NextFunction) => Promise<v
   };
 
 // Load persisted settings
-settingsRouter.get('/', wrap(async (_req: Request, res: Response) => {
-  const settings = await loadSettings();
+settingsRouter.get('/', wrap(async (req: Request, res: Response) => {
+  const { userId } = (req as AuthenticatedRequest).user;
+  const settings = await loadSettings(userId);
   // Never send raw API keys to the frontend — mask them
   res.json({
     ...settings,
@@ -23,12 +26,13 @@ settingsRouter.get('/', wrap(async (_req: Request, res: Response) => {
   });
 }));
 
-// Save settings
-settingsRouter.post('/', wrap(async (req: Request, res: Response) => {
+// Save settings — Owner only (global settings affect all users)
+settingsRouter.post('/', requireRole('OWNER'), wrap(async (req: Request, res: Response) => {
+  const { userId } = (req as AuthenticatedRequest).user;
   const incoming = req.body as Record<string, string>;
   // If the frontend sends the masked placeholder, reload the real value from DB
-  const current = await loadSettings();
-  await saveSettings({
+  const current = await loadSettings(userId);
+  await saveSettings(userId, {
     llmProvider: incoming.llmProvider ?? current.llmProvider,
     llmModel: incoming.llmModel ?? current.llmModel,
     llmApiKey: incoming.llmApiKey === '••••••••' ? current.llmApiKey : (incoming.llmApiKey ?? ''),
@@ -47,33 +51,41 @@ settingsRouter.post('/', wrap(async (req: Request, res: Response) => {
 
 // Test LLM connection
 settingsRouter.post('/test-llm', wrap(async (req: Request, res: Response) => {
+  const { userId } = (req as AuthenticatedRequest).user;
   const { llmProvider, llmModel, llmApiKey } = req.body as {
     llmProvider: string;
     llmModel: string;
     llmApiKey: string;
   };
 
-  console.log(`[test-llm] provider=${llmProvider} model=${llmModel} keySet=${!!llmApiKey}`);
+  if (process.env.LOG_LEVEL === 'debug') console.log(`[test-llm] provider=${llmProvider} model=${llmModel} keySet=${!!llmApiKey}`);
 
   if (!llmProvider || !llmModel) {
     res.json({ ok: false, message: 'Provider and model are required. Save your settings first.' });
     return;
   }
 
-  if (!llmApiKey) {
+  // If frontend sent masked placeholder, load the real key from DB
+  let resolvedApiKey = llmApiKey;
+  if (llmApiKey === '••••••••') {
+    const saved = await loadSettings(userId);
+    resolvedApiKey = saved.llmApiKey;
+  }
+
+  if (!resolvedApiKey) {
     res.json({ ok: false, message: 'API key is missing. Enter and save your LLM API key first.' });
     return;
   }
 
   try {
-    const service = new LLMService(llmProvider as LLMProviderName, llmApiKey);
+    const service = new LLMService(llmProvider as LLMProviderName, resolvedApiKey);
     const result = await service.complete({
       model: llmModel,
       prompt: 'Reply with exactly: OK',
       temperature: 0
     });
     const ok = result.text.trim().length > 0;
-    console.log(`[test-llm] result ok=${ok} text="${result.text.slice(0, 40)}"`);
+    if (process.env.LOG_LEVEL === 'debug') console.log(`[test-llm] result ok=${ok} text="${result.text.slice(0, 40)}"`);
     res.json({ ok, message: ok ? `LLM test passed for ${llmProvider} (${llmModel}).` : 'LLM returned an empty response.' });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -125,7 +137,7 @@ settingsRouter.post('/test-jira', wrap(async (req: Request, res: Response) => {
     const data = (await resp.json()) as { displayName?: string; emailAddress?: string };
     const who = data.displayName ?? data.emailAddress ?? 'unknown user';
     const xrayNote = xrayOk ? '' : ' (Xray credentials are missing — push to Xray will not work.)';
-    console.log(`[test-jira] connected as "${who}" xrayOk=${xrayOk}`);
+    if (process.env.LOG_LEVEL === 'debug') console.log(`[test-jira] connected as "${who}" xrayOk=${xrayOk}`);
     res.json({ ok: true, message: `Jira connected as ${who}.${xrayNote}` });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

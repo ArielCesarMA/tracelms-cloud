@@ -20,6 +20,13 @@ export class LLMService {
     return this.provider.stream(request, onChunk);
   }
 
+  public completeVision(imageBase64: string, mimeType: string, systemPrompt: string): Promise<LLMResponse> {
+    if (!this.provider.completeVision) {
+      return Promise.reject(new Error('The selected LLM provider does not support image analysis. Switch to OpenAI, Anthropic, or Google in LLM Providers settings.'));
+    }
+    return this.provider.completeVision(imageBase64, mimeType, systemPrompt);
+  }
+
   private static createProvider(providerName: LLMProviderName, apiKey: string): LLMProvider {
     switch (providerName) {
       case 'OpenAI':

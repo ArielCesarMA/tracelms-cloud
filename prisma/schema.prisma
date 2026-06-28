@@ -7,13 +7,75 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum ProjectRole {
+  LEAD
+  EDITOR
+  REVIEWER
+  VIEWER
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum GenerationStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum ApprovalConsensus {
+  ANY
+  ALL
+}
+
+enum PromptStep {
+  ENHANCEMENT
+  SCENARIOS
+  TEST_CASES
+  AUTOMATION
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+// Single-user origin — first registered user is auto-assigned OWNER.
+// All others default to EDITOR to avoid accidental lockout.
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String
+  role         OrgRole         @default(EDITOR)
+  isActive     Boolean         @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime        @default(now())
+  settings     Settings?
+  generations  Generation[]
+  projects     Project[]
+  members      ProjectMember[]
+
+  @@index([role])
+}
+
 // ─── App Settings ────────────────────────────────────────────────────────────
-// Single-row table for global connection settings (LLM, Jira, Xray).
-// Sensitive values (apiKey, jiraApiToken, xrayClientSecret) are
-// AES-256-GCM encrypted by the backend before being stored.
+// One row per user — scoped in Phase 3. The legacy global row (id='global')
+// is claimed by the first authenticated user on first settings load.
 
 model Settings {
-  id               String   @id @default("global")
+  id               String   @id @default(cuid())
+  userId           String?  @unique           // FK to User; claimed on first load
+  user             User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   llmProvider      String   @default("Gemini")
   llmModel         String   @default("")
   llmApiKeyEnc     String   @default("") // encrypted
@@ -30,18 +92,16 @@ model Settings {
 }
 
 // ─── LLM Providers ───────────────────────────────────────────────────────────
-// Extensible provider registry. Built-in providers (Gemini, OpenAI, Anthropic,
-// Groq) are seeded. Users can add OpenAI-compatible providers via the UI.
 
 model LLMProvider {
   id            String      @id @default(cuid())
-  name          String      @unique // e.g. "Groq", "Mistral"
-  displayLabel  String      // shown in dropdowns
-  baseUrl       String      // API endpoint base URL
-  authHeader    String      @default("Bearer") // "Bearer" | "x-api-key" | custom
-  apiKeyEnc     String      @default("") // encrypted; blank = use Settings.llmApiKeyEnc
-  compatibility String      @default("openai") // "openai" | "anthropic" | "gemini" | "custom"
-  isBuiltIn     Boolean     @default(false) // built-ins cannot be deleted
+  name          String      @unique
+  displayLabel  String
+  baseUrl       String
+  authHeader    String      @default("Bearer")
+  apiKeyEnc     String      @default("")
+  compatibility String      @default("openai")
+  isBuiltIn     Boolean     @default(false)
   isActive      Boolean     @default(true)
   models        LLMModel[]
   createdAt     DateTime    @default(now())
@@ -50,8 +110,8 @@ model LLMProvider {
 
 model LLMModel {
   id           String      @id @default(cuid())
-  modelId      String      // e.g. "llama-3.3-70b-versatile"
-  displayLabel String      // shown in model dropdown
+  modelId      String
+  displayLabel String
   isDefault    Boolean     @default(false)
   provider     LLMProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   providerId   String
@@ -61,66 +121,140 @@ model LLMModel {
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
-// Each generation run belongs to a Project. Stakeholders are stored for
-// the future automated approval workflow.
 
 model Project {
-  id              String        @id @default(cuid())
+  id              String          @id @default(cuid())
   name            String
-  key             String        @unique // e.g. "PGW" — mirrors Jira project key
-  description     String        @default("")
-  jiraProjectKey  String        @default("")
-  status          ProjectStatus @default(ACTIVE)
-  owner           String        @default("") // email of primary owner
-  stakeholders    Stakeholder[]
+  key             String          @unique
+  description     String          @default("")
+  jiraProjectKey  String          @default("")
+  status          ProjectStatus   @default(ACTIVE)
+  owner           String          @default("")
+  ownerId         String?
+  userOwner       User?           @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  members         ProjectMember[]
   generations     Generation[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  approvalLayers  ApprovalLayer[]
+  promptTemplates PromptTemplate[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
 }
 
-enum ProjectStatus {
-  DRAFT
-  ACTIVE
-  ARCHIVED
-}
+// ─── Approval Chain ───────────────────────────────────────────────────────────
+// Each project has up to 5 ordered approval layers.
+// consensus=ANY: first approval in the layer advances to the next layer.
+// consensus=ALL: every member in the layer must approve before advancing.
 
-model Stakeholder {
-  id        String   @id @default(cuid())
-  email     String
-  name      String   @default("")
-  role      String   @default("Reviewer") // e.g. "QA Lead", "Product Owner"
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+model ApprovalLayer {
+  id        String              @id @default(cuid())
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
-  createdAt DateTime @default(now())
+  order     Int                 // 1–5
+  consensus ApprovalConsensus   @default(ALL)
+  members   ApprovalLayerMember[]
+  createdAt DateTime            @default(now())
+
+  @@unique([projectId, order])
+  @@index([projectId])
+}
+
+model ApprovalLayerMember {
+  id      String        @id @default(cuid())
+  layer   ApprovalLayer @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  layerId String
+  name    String        @default("")
+  email   String
+
+  @@index([layerId])
+}
+
+// ProjectMember replaces the Phase 3 Stakeholder model.
+// Role is now a typed enum enforced by permissions middleware.
+
+model ProjectMember {
+  id          String      @id @default(cuid())
+  email       String
+  name        String      @default("")
+  projectRole ProjectRole @default(VIEWER)
+  userId      String?     // FK to User account (nullable — external stakeholders may not have accounts)
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  createdAt   DateTime    @default(now())
 
   @@unique([projectId, email])
+  @@index([userId])
+  @@index([projectId])
 }
 
 // ─── Generations ─────────────────────────────────────────────────────────────
-// Stores the output of each "Generate All" run so nothing is lost on refresh.
 
 model Generation {
   id               String           @id @default(cuid())
-  project          Project?         @relation(fields: [projectId], references: [id])
+  project          Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   projectId        String?
-  requirementText  String           // raw requirement input
+  userId           String?
+  user             User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  requirementText  String
   llmProvider      String
   llmModel         String
   status           GenerationStatus @default(COMPLETED)
-  enhancement      Json?            // RequirementEnhancement object
-  scenarios        Json?            // ScenarioItem[]
-  testCases        Json?            // TestCaseItem[]
-  automation       Json?            // AutomationAnalysis object
+  enhancement      Json?
+  scenarios        Json?
+  testCases        Json?
+  automation       Json?
   totalTestCases   Int              @default(0)
   totalScenarios   Int              @default(0)
-  xrayPushStatus   String?          // null | "pending" | "pushed" | "failed"
+  promptTokens     Int              @default(0)
+  completionTokens Int              @default(0)
+  totalTokens      Int              @default(0)
+  xrayPushStatus   String?
+  documents        Json?
+  pushRecords      PushRecord[]
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([createdAt])
+  @@index([status])
 }
 
-enum GenerationStatus {
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-  PARTIAL
+// ─── Prompt Templates ─────────────────────────────────────────────────────────
+// Editable LLM system prompts. step=null means global/auxiliary; typed steps
+// map to the 4 main generation steps. isDefault=true rows are the seed baselines
+// and cannot be deleted — only content can be overridden via isActive=false + new row.
+
+model PromptTemplate {
+  id        String     @id @default(cuid())
+  name      String
+  step      PromptStep
+  content   String
+  isDefault Boolean    @default(false)
+  isActive  Boolean    @default(true)
+  projectId String?
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([step])
+  @@index([isActive])
+  @@index([projectId])
+}
+
+// ─── Push History ─────────────────────────────────────────────────────────────
+
+model PushRecord {
+  id           String      @id @default(cuid())
+  fingerprint  String      @unique
+  xrayKey      String
+  xrayUrl      String
+  pushedAt     DateTime    @default(now())
+  generationId String?
+  generation   Generation? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+
+  @@index([generationId])
 }

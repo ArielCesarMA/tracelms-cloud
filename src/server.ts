@@ -2,11 +2,21 @@ import 'dotenv/config';
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import { settingsRouter } from './routes/settings';
 import { parseRouter } from './routes/parse';
 import { generateRouter } from './routes/generate';
 import { jiraRouter } from './routes/jira';
 import { xrayRouter } from './routes/xray';
+import { generationRouter } from './routes/generation';
+import { authRouter } from './routes/auth';
+import { projectsRouter } from './routes/projects';
+import { usersRouter } from './routes/users';
+import { documentsRouter } from './routes/documents';
+import { promptsRouter } from './routes/prompts';
+import { analyticsRouter } from './routes/analytics';
+import { authMiddleware } from './middleware/auth';
+import { requireRole } from './middleware/permissions';
 
 // ── Process-level safety net ───────────────────────────────────────────────
 // Node 15+ crashes on unhandled rejections — log and keep the server alive.
@@ -42,7 +52,31 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: '50mb' }));
+// 27 MB cap — prevents oversized document payloads from reaching LLM routes
+app.use(express.json({ limit: '27mb' }));
+
+// ── Rate limiters ──────────────────────────────────────────────────────────
+// Login: 5 attempts per 15 minutes per IP (brute force protection)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+});
+
+// Generation: 5 requests per minute per IP (LLM cost protection — Phase 2.5 TDD)
+const generateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit reached. Please wait before generating again.' },
+});
+
+// ── Auth middleware ────────────────────────────────────────────────────────
+// Protects all /api/* routes except /api/health and /api/auth/*.
+app.use('/api', authMiddleware);
 
 // ── Health check ───────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -50,15 +84,26 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── API routes ─────────────────────────────────────────────────────────────
+app.use('/api/auth/login', loginLimiter);
+app.use('/api/auth', authRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/parse', parseRouter);
-app.use('/api/generate', generateRouter);
+app.use('/api/generate', generateLimiter, generateRouter);
 app.use('/api/jira', jiraRouter);
 app.use('/api/xray', xrayRouter);
+app.use('/api/generation', generationRouter);
+app.use('/api/projects', projectsRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/documents', documentsRouter);
+app.use('/api/prompts', promptsRouter);
+app.use('/api/analytics', analyticsRouter);
+// Owner-only: global settings write is guarded at the route level inside settingsRouter.
+// Xray + generate routes are guarded at route level via requireProjectRole.
 
 // ── Frontend (production) ──────────────────────────────────────────────────
 const frontendDist = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendDist));
+
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });

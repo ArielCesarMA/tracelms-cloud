@@ -1,0 +1,22 @@
+# TraceLMs Cloud — Caddy reverse proxy with automatic TLS via Let's Encrypt
+# Replace yourdomain.com with your actual domain.
+# Caddy renews certificates automatically — no cron job required.
+#
+# Usage:
+#   caddy run --config Caddyfile
+#
+# Docs: https://caddyserver.com/docs/caddyfile
+
+yourdomain.com {
+  reverse_proxy localhost:3000
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  encode gzip
+  log
+}
