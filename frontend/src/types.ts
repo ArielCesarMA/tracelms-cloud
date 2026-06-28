@@ -83,6 +83,7 @@ export type TabKey =
   | 'prompts'
   | 'output'
   | 'documents'
+  | 'users'
   | 'guide';
 
 export type PromptStep = 'ENHANCEMENT' | 'SCENARIOS' | 'TEST_CASES' | 'AUTOMATION';

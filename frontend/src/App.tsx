@@ -39,6 +39,7 @@ import { OutputTab } from './tabs/OutputTab';
 import { DocumentsTab } from './tabs/DocumentsTab';
 import { PromptsTab } from './tabs/PromptsTab';
 import { GuideTab } from './tabs/GuideTab';
+import { UsersTab } from './tabs/UsersTab';
 
 // Auth wrapper — prevents AppInner from mounting (and running all its hooks)
 // until authentication is confirmed. This is the correct way to gate hook-heavy
@@ -530,7 +531,10 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     { key: 'output',     label: 'Output',     icon: 'ti-file-export' },
   ];
 
+  const canManageUsers = userRole === 'OWNER' || userRole === 'ADMIN';
+
   const utilityItems: { key: TabKey; label: string; icon: string }[] = [
+    ...(canManageUsers ? [{ key: 'users' as TabKey, label: 'Team', icon: 'ti-users' }] : []),
     { key: 'llm-providers', label: 'LLM Providers', icon: 'ti-cpu' },
     { key: 'integrations',  label: 'Settings',      icon: 'ti-settings' },
   ];
@@ -701,30 +705,45 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
         {/* Footer — status + logout */}
         <div className="sidebar-footer" role="status" aria-live="polite">
+          {/* Status row */}
           <div className="sidebar-footer-status">
             <span className={statusDotClass} aria-hidden="true" />
             <span className="sidebar-status-text">{status}</span>
             <span className="sidebar-version">v0.1.0</span>
           </div>
+
           {activeProjectName && (
             <div className="sidebar-active-project" title={`Active project: ${activeProjectName}`}>
               <i className="ti ti-folder-filled" aria-hidden="true" />
               <span className="sidebar-active-project-name">{activeProjectName}</span>
             </div>
           )}
-          {userRole && (
-            <div
-              className={`sidebar-role-badge sidebar-role-badge--${userRole.toLowerCase()}`}
-              title={ROLE_DESCRIPTIONS[userRole]}
-              aria-label={`Your role: ${ROLE_LABELS[userRole]}`}
-            >
-              {ROLE_LABELS[userRole]}
+
+          {/* User identity block — avatar + email + role + sign out */}
+          {authUser && (
+            <div className="sidebar-identity">
+              <div className="sidebar-identity-avatar" aria-hidden="true">
+                {authUser.email.charAt(0).toUpperCase()}
+              </div>
+              <div className="sidebar-identity-info">
+                <span className="sidebar-identity-email" title={authUser.email}>
+                  {authUser.email}
+                </span>
+                {userRole && (
+                  <span
+                    className={`sidebar-role-badge sidebar-role-badge--${userRole.toLowerCase()}`}
+                    title={ROLE_DESCRIPTIONS[userRole]}
+                    aria-label={`Your role: ${ROLE_LABELS[userRole]}`}
+                  >
+                    {ROLE_LABELS[userRole]}
+                  </span>
+                )}
+              </div>
+              <button onClick={onLogout} className="sidebar-signout-icon" title="Sign out" aria-label="Sign out">
+                <i className="ti ti-logout" aria-hidden="true" />
+              </button>
             </div>
           )}
-          <button onClick={onLogout} className="sidebar-signout" title="Sign out">
-            <i className="ti ti-logout" aria-hidden="true" />
-            <span>Sign out</span>
-          </button>
         </div>
 
       </aside>
@@ -937,6 +956,15 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
         {activeTab === 'output' && (
           <ErrorBoundary tabName="Output">
             <OutputTab tokenUsage={tokenUsage} />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'users' && authUser && (
+          <ErrorBoundary tabName="Team">
+            <UsersTab
+              currentUserId={authUser.id}
+              currentUserRole={(authUser.role ?? 'EDITOR') as import('./types').OrgRole}
+            />
           </ErrorBoundary>
         )}
 
