@@ -15,6 +15,7 @@ import { usersRouter } from './routes/users';
 import { documentsRouter } from './routes/documents';
 import { promptsRouter } from './routes/prompts';
 import { analyticsRouter } from './routes/analytics';
+import { statsRouter } from './routes/stats';
 import { authMiddleware } from './middleware/auth';
 import { requireRole } from './middleware/permissions';
 
@@ -97,6 +98,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/prompts', promptsRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/stats', statsRouter);
 // Owner-only: global settings write is guarded at the route level inside settingsRouter.
 // Xray + generate routes are guarded at route level via requireProjectRole.
 

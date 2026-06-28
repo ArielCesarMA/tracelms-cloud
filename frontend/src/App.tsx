@@ -600,8 +600,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
             </svg>
           </div>
           <div className="sidebar-brand-text">
-            <span className="sidebar-brand-name">trace<span className="sidebar-brand-lms">LMs</span></span>
-            <span className="sidebar-brand-sub">Cloud</span>
+            <span className="sidebar-brand-name">trace<span className="sidebar-brand-lms">LMs</span><span className="sidebar-brand-cloud">Cloud</span></span>
           </div>
         </div>
 
@@ -702,9 +701,11 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
         {/* Footer — status + logout */}
         <div className="sidebar-footer" role="status" aria-live="polite">
-          <span className={statusDotClass} aria-hidden="true" />
-          <span className="sidebar-status-text">{status}</span>
-          <span className="sidebar-version">v0.1.0</span>
+          <div className="sidebar-footer-status">
+            <span className={statusDotClass} aria-hidden="true" />
+            <span className="sidebar-status-text">{status}</span>
+            <span className="sidebar-version">v0.1.0</span>
+          </div>
           {activeProjectName && (
             <div className="sidebar-active-project" title={`Active project: ${activeProjectName}`}>
               <i className="ti ti-folder-filled" aria-hidden="true" />
@@ -720,26 +721,9 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               {ROLE_LABELS[userRole]}
             </div>
           )}
-          <button
-            onClick={onLogout}
-            title="Sign out"
-            style={{
-              marginTop: 'var(--space-2)',
-              width: '100%',
-              background: 'transparent',
-              border: '1px solid var(--border)',
-              color: 'var(--text-secondary)',
-              fontSize: 'var(--text-xs)',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              borderRadius: 'var(--radius-sm)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
+          <button onClick={onLogout} className="sidebar-signout" title="Sign out">
             <i className="ti ti-logout" aria-hidden="true" />
-            Sign out
+            <span>Sign out</span>
           </button>
         </div>
 

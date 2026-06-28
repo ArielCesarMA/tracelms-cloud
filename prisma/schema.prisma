@@ -245,6 +245,26 @@ model PromptTemplate {
   @@index([projectId])
 }
 
+// ─── Testimonials ─────────────────────────────────────────────────────────────
+// Seeded by the admin via Prisma Studio or a seed script.
+// isVisible: false hides the entry without deleting it.
+// displayOrder controls left-to-right logo row ordering.
+
+model Testimonial {
+  id           String   @id @default(cuid())
+  companyName  String
+  logoUrl      String   @default("")  // absolute URL or path under /public
+  quote        String   @default("")
+  authorName   String   @default("")
+  authorTitle  String   @default("")
+  isVisible    Boolean  @default(false) // hidden until admin approves
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isVisible, displayOrder])
+}
+
 // ─── Push History ─────────────────────────────────────────────────────────────
 
 model PushRecord {

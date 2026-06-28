@@ -9,6 +9,7 @@ const PUBLIC_PATHS = new Set([
   '/api/health',
   '/api/auth/login',
   '/api/auth/register',
+  '/api/stats',
 ]);
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {

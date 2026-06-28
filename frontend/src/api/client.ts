@@ -159,6 +159,27 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 // Re-export for convenience
 export type { Project, ProjectMember, GenerationHistoryItem, AuthUser };
 
+// ── Public stats (login page — no auth required) ──────────────────────────────
+
+export type PublicTestimonial = {
+  id: string;
+  companyName: string;
+  logoUrl: string;
+  quote: string;
+  authorName: string;
+  authorTitle: string;
+};
+
+export async function getPublicStats(): Promise<{ generationsCount: number; testimonials: PublicTestimonial[] }> {
+  try {
+    const res = await fetch('/api/stats', { method: 'GET' });
+    if (!res.ok) return { generationsCount: 0, testimonials: [] };
+    return res.json() as Promise<{ generationsCount: number; testimonials: PublicTestimonial[] }>;
+  } catch {
+    return { generationsCount: 0, testimonials: [] };
+  }
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function login(email: string, password: string): Promise<{ token: string; expiresAt: string | null }> {
