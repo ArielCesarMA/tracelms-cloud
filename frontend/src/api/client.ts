@@ -223,6 +223,10 @@ export async function updateUserStatus(userId: string, isActive: boolean): Promi
   return patch(`/users/${userId}/status`, { isActive });
 }
 
+export async function inviteUser(email: string, role: OrgRole, temporaryPassword: string): Promise<{ user: AuthUser }> {
+  return post('/users/invite', { email, role, temporaryPassword });
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export async function testLlm(settings: Settings): Promise<{ ok: boolean; message: string }> {

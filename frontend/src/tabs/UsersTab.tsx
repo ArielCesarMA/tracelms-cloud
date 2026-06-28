@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchUsers, updateUserRole, updateUserStatus } from '../api/client';
+import { fetchUsers, updateUserRole, updateUserStatus, inviteUser } from '../api/client';
 import type { AuthUser, OrgRole } from '../types';
 
 const ROLE_OPTIONS: OrgRole[] = ['OWNER', 'ADMIN', 'EDITOR', 'VIEWER'];
@@ -23,13 +23,35 @@ interface UsersTabProps {
   currentUserRole: OrgRole;
 }
 
+interface InviteForm {
+  email: string;
+  role: OrgRole;
+  temporaryPassword: string;
+}
+
+const INVITE_DEFAULTS: InviteForm = { email: '', role: 'EDITOR', temporaryPassword: '' };
+
 export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX.Element {
-  const [users, setUsers]     = useState<AuthUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
-  const [saving, setSaving]   = useState<string | null>(null); // userId being patched
+  const [users, setUsers]         = useState<AuthUser[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState('');
+  const [saving, setSaving]       = useState<string | null>(null);
+
+  // Invite modal state
+  const [showInvite, setShowInvite]   = useState(false);
+  const [inviteForm, setInviteForm]   = useState<InviteForm>(INVITE_DEFAULTS);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState('');
+  const [showPassword, setShowPassword]   = useState(false);
 
   const isOwner = currentUserRole === 'OWNER';
+  const canInvite = isOwner || currentUserRole === 'ADMIN';
+
+  // Roles available to this inviter
+  const inviteRoleOptions: OrgRole[] = isOwner
+    ? ['ADMIN', 'EDITOR', 'VIEWER']
+    : ['EDITOR', 'VIEWER'];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,10 +94,35 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
     }
   }
 
+  async function handleInvite(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setInviteError('');
+    setInviteSuccess('');
+    setInviteLoading(true);
+    try {
+      const { user: created } = await inviteUser(inviteForm.email, inviteForm.role, inviteForm.temporaryPassword);
+      setUsers((prev) => [...prev, created]);
+      setInviteSuccess(`Account created for ${created.email} with role ${ROLE_LABELS[created.role as OrgRole]}.`);
+      setInviteForm(INVITE_DEFAULTS);
+      setShowPassword(false);
+    } catch (e) {
+      setInviteError(e instanceof Error ? e.message : 'Invite failed.');
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  function closeInviteModal(): void {
+    setShowInvite(false);
+    setInviteForm(INVITE_DEFAULTS);
+    setInviteError('');
+    setInviteSuccess('');
+    setShowPassword(false);
+  }
+
   function canEditUser(target: AuthUser): boolean {
-    if (target.id === currentUserId) return false; // cannot edit self
+    if (target.id === currentUserId) return false;
     if (currentUserRole === 'OWNER') return true;
-    // ADMIN cannot edit OWNER or ADMIN accounts
     if (currentUserRole === 'ADMIN' && (target.role === 'OWNER' || target.role === 'ADMIN')) return false;
     return currentUserRole === 'ADMIN';
   }
@@ -90,9 +137,17 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
             {!isOwner && ' Role changes require Owner access.'}
           </p>
         </div>
-        <button className="users-tab-refresh" onClick={() => { void load(); }} title="Refresh" aria-label="Refresh user list">
-          <i className="ti ti-refresh" aria-hidden="true" />
-        </button>
+        <div className="users-tab-actions">
+          {canInvite && (
+            <button className="users-invite-btn" onClick={() => setShowInvite(true)}>
+              <i className="ti ti-user-plus" aria-hidden="true" />
+              Invite Member
+            </button>
+          )}
+          <button className="users-tab-refresh" onClick={() => { void load(); }} title="Refresh" aria-label="Refresh user list">
+            <i className="ti ti-refresh" aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -128,7 +183,6 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                 return (
                   <tr key={user.id} className={`users-row${!user.isActive ? ' users-row--inactive' : ''}`}>
 
-                    {/* Email + self badge */}
                     <td className="users-cell-email">
                       <div className="users-avatar" aria-hidden="true">
                         {user.email.charAt(0).toUpperCase()}
@@ -139,7 +193,6 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                       </div>
                     </td>
 
-                    {/* Role — dropdown for editable rows, badge for others */}
                     <td className="users-cell-role">
                       {editable && isOwner ? (
                         <select
@@ -166,7 +219,6 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                       )}
                     </td>
 
-                    {/* Active status */}
                     <td className="users-cell-status">
                       <span className={`users-status-dot${user.isActive ? ' users-status-dot--active' : ' users-status-dot--inactive'}`} aria-hidden="true" />
                       <span className={user.isActive ? 'users-status-label' : 'users-status-label users-status-label--inactive'}>
@@ -174,14 +226,12 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                       </span>
                     </td>
 
-                    {/* Last login */}
                     <td className="users-cell-login">
                       {user.lastLoginAt
                         ? new Date(user.lastLoginAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
                         : <span className="users-never">Never</span>}
                     </td>
 
-                    {/* Actions — deactivate/reactivate */}
                     {(isOwner || currentUserRole === 'ADMIN') && (
                       <td className="users-cell-actions">
                         {editable ? (
@@ -218,6 +268,102 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                 ? 'Role changes take effect on next login.'
                 : 'Contact your Owner to change roles.'}
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Invite Member modal ─────────────────────────────────────────────── */}
+      {showInvite && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member" onClick={(e) => { if (e.target === e.currentTarget) closeInviteModal(); }}>
+          <div className="modal-panel users-invite-panel">
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <i className="ti ti-user-plus" aria-hidden="true" />
+                Invite Team Member
+              </h3>
+              <button className="modal-close" onClick={closeInviteModal} aria-label="Close">
+                <i className="ti ti-x" aria-hidden="true" />
+              </button>
+            </div>
+
+            <form className="users-invite-form" onSubmit={(e) => { void handleInvite(e); }}>
+              <div className="form-field">
+                <label className="form-label" htmlFor="invite-email">Email address</label>
+                <input
+                  id="invite-email"
+                  className="form-input"
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="invite-role">Role</label>
+                <select
+                  id="invite-role"
+                  className="form-input"
+                  value={inviteForm.role}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as OrgRole }))}
+                >
+                  {inviteRoleOptions.map((r) => (
+                    <option key={r} value={r}>{ROLE_LABELS[r]} — {ROLE_DESCRIPTIONS[r]}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="invite-pw">Temporary password</label>
+                <div className="form-input-group">
+                  <input
+                    id="invite-pw"
+                    className="form-input form-input--with-icon"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Min. 8 characters"
+                    value={inviteForm.temporaryPassword}
+                    onChange={(e) => setInviteForm((f) => ({ ...f, temporaryPassword: e.target.value }))}
+                    required
+                    minLength={8}
+                  />
+                  <button
+                    type="button"
+                    className="form-input-icon-btn"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'}`} aria-hidden="true" />
+                  </button>
+                </div>
+                <p className="form-hint">Share this password with the user out-of-band. They can change it after logging in.</p>
+              </div>
+
+              {inviteError && (
+                <div className="users-tab-error" role="alert">
+                  <i className="ti ti-alert-circle" aria-hidden="true" />
+                  {inviteError}
+                </div>
+              )}
+
+              {inviteSuccess && (
+                <div className="users-invite-success" role="status">
+                  <i className="ti ti-circle-check" aria-hidden="true" />
+                  {inviteSuccess}
+                </div>
+              )}
+
+              <div className="modal-footer">
+                <button type="button" className="btn-ghost" onClick={closeInviteModal}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={inviteLoading}>
+                  {inviteLoading
+                    ? <><i className="ti ti-loader-2 users-spinner" aria-hidden="true" /> Creating…</>
+                    : <><i className="ti ti-user-plus" aria-hidden="true" /> Create Account</>
+                  }
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

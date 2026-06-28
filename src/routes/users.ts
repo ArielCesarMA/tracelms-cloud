@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/permissions';
@@ -12,6 +13,8 @@ const wrap = (fn: (req: Request, res: Response, next: NextFunction) => Promise<v
 
 const VALID_ORG_ROLES = ['OWNER', 'ADMIN', 'EDITOR', 'VIEWER'] as const;
 type OrgRoleValue = typeof VALID_ORG_ROLES[number];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BCRYPT_COST = 12;
 
 // ── GET /api/users ─────────────────────────────────────────────────────────
 // Owner and Admin can list all users.
@@ -106,4 +109,51 @@ usersRouter.patch('/:id/status', requireRole('OWNER', 'ADMIN'), wrap(async (req,
   });
 
   res.json({ user: updated });
+}));
+
+// ── POST /api/users/invite ─────────────────────────────────────────────────
+// Owner and Admin create a new account with a pre-assigned role and temporary password.
+// Admin cannot create OWNER or ADMIN accounts.
+
+usersRouter.post('/invite', requireRole('OWNER', 'ADMIN'), wrap(async (req, res) => {
+  const { email, role, temporaryPassword } = req.body as {
+    email?: string;
+    role?: OrgRoleValue;
+    temporaryPassword?: string;
+  };
+  const requester = (req as AuthenticatedRequest).user;
+
+  if (!email || !EMAIL_RE.test(email)) {
+    res.status(400).json({ error: 'A valid email address is required.' });
+    return;
+  }
+  if (!role || !VALID_ORG_ROLES.includes(role)) {
+    res.status(400).json({ error: `role must be one of: ${VALID_ORG_ROLES.join(', ')}` });
+    return;
+  }
+  if (!temporaryPassword || temporaryPassword.length < 8) {
+    res.status(400).json({ error: 'Temporary password must be at least 8 characters.' });
+    return;
+  }
+
+  // Admin cannot create OWNER or ADMIN accounts
+  if (requester.role === 'ADMIN' && (role === 'OWNER' || role === 'ADMIN')) {
+    res.status(403).json({ error: 'Admin can only create Editor or Viewer accounts.' });
+    return;
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    res.status(409).json({ error: 'An account with this email already exists.' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
+  const user = await prisma.user.create({
+    data: { email, passwordHash, role },
+    select: { id: true, email: true, role: true, isActive: true, lastLoginAt: true, createdAt: true },
+  });
+
+  console.log(`[users/invite] ${requester.email} created account for ${email} with role ${role}`);
+  res.status(201).json({ user });
 }));
