@@ -40,6 +40,7 @@ import { DocumentsTab } from './tabs/DocumentsTab';
 import { PromptsTab } from './tabs/PromptsTab';
 import { GuideTab } from './tabs/GuideTab';
 import { UsersTab } from './tabs/UsersTab';
+import { AdminPage } from './pages/AdminPage';
 
 // Auth wrapper — prevents AppInner from mounting (and running all its hooks)
 // until authentication is confirmed. This is the correct way to gate hook-heavy
@@ -539,6 +540,8 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     { key: 'integrations',  label: 'Settings',      icon: 'ti-settings' },
   ];
 
+  const isAdminRole = userRole === 'OWNER' || userRole === 'ADMIN';
+
   return (
     <div className="app-layout">
 
@@ -701,6 +704,20 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               </span>
             </button>
           ))}
+          {isAdminRole && (
+            <button
+              type="button"
+              className={`sidebar-item sidebar-item--admin${activeTab === 'admin' ? ' active' : ''}`}
+              onClick={() => nav('admin')}
+              aria-current={activeTab === 'admin' ? 'page' : undefined}
+              title="Administration"
+            >
+              <span className="sidebar-item-inner">
+                <i className="ti ti-shield-cog sidebar-icon" aria-hidden="true" />
+                Administration
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Footer — status + logout */}
@@ -971,6 +988,15 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
         {activeTab === 'guide' && (
           <ErrorBoundary tabName="Guide">
             <GuideTab />
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'admin' && authUser && isAdminRole && (
+          <ErrorBoundary tabName="Administration">
+            <AdminPage
+              currentUserRole={(authUser.role ?? 'EDITOR') as import('./types').OrgRole}
+              onBack={() => nav('requirements')}
+            />
           </ErrorBoundary>
         )}
 

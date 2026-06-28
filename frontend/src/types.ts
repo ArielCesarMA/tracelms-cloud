@@ -84,6 +84,7 @@ export type TabKey =
   | 'output'
   | 'documents'
   | 'users'
+  | 'admin'
   | 'guide';
 
 export type PromptStep = 'ENHANCEMENT' | 'SCENARIOS' | 'TEST_CASES' | 'AUTOMATION';
