@@ -274,11 +274,11 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
       {/* ── Invite Member modal ─────────────────────────────────────────────── */}
       {showInvite && (
         <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member" onClick={(e) => { if (e.target === e.currentTarget) closeInviteModal(); }}>
-          <div className="proj-modal">
+          <div className="proj-modal users-invite-modal">
             <h3>Invite Team Member</h3>
 
-            <div className="field-row">
-              <label htmlFor="invite-email">Email address</label>
+            <div className="field-stack">
+              <label className="invite-label" htmlFor="invite-email">Email address</label>
               <input
                 id="invite-email"
                 type="email"
@@ -290,8 +290,8 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
               />
             </div>
 
-            <div className="field-row">
-              <label htmlFor="invite-role">Role</label>
+            <div className="field-stack">
+              <label className="invite-label" htmlFor="invite-role">Role</label>
               <select
                 id="invite-role"
                 value={inviteForm.role}
@@ -303,33 +303,28 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
               </select>
             </div>
 
-            <div className="field-row" style={{ alignItems: 'flex-start', paddingTop: '2px' }}>
-              <label htmlFor="invite-pw" style={{ paddingTop: '8px' }}>
-                Temporary password
-              </label>
-              <div>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <input
-                    id="invite-pw"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Min. 8 characters"
-                    value={inviteForm.temporaryPassword}
-                    onChange={(e) => setInviteForm((f) => ({ ...f, temporaryPassword: e.target.value }))}
-                    required
-                    minLength={8}
-                    style={{ paddingRight: '36px', width: '100%' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
-                  >
-                    <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'}`} aria-hidden="true" />
-                  </button>
-                </div>
-                <p className="helper-text" style={{ marginTop: '4px' }}>Share with the user out-of-band. They can change it after logging in.</p>
+            <div className="field-stack">
+              <label className="invite-label" htmlFor="invite-pw">Temporary password</label>
+              <div className="invite-pw-wrap">
+                <input
+                  id="invite-pw"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Min. 8 characters"
+                  value={inviteForm.temporaryPassword}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, temporaryPassword: e.target.value }))}
+                  required
+                  minLength={8}
+                />
+                <button
+                  type="button"
+                  className="invite-pw-toggle"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'}`} aria-hidden="true" />
+                </button>
               </div>
+              <p className="helper-text">Share credentials with the user directly — no email is sent automatically.</p>
             </div>
 
             {inviteError   && <p className="feedback feedback--error">{inviteError}</p>}

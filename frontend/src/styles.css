@@ -5793,6 +5793,34 @@ button[data-variant="danger"]:hover { background: rgba(224,82,82,0.08); }
 .users-count { font-size: var(--text-xs); color: var(--text-tertiary); font-weight: var(--weight-medium); }
 .users-hint  { font-size: var(--text-xs); color: var(--text-tertiary); }
 
+/* ── Invite modal overrides ──────────────────────────────────────────────── */
+.users-invite-modal { width: 520px; }
+.invite-label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.invite-pw-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.invite-pw-wrap input { padding-right: 40px; width: 100%; box-sizing: border-box; }
+.invite-pw-toggle {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+}
+.invite-pw-toggle:hover { color: var(--text-primary); background: none; box-shadow: none; transform: none; }
+
 /* ── Users Tab — header actions & invite button ──────────────────────────── */
 .users-tab-actions {
   display: flex;
