@@ -524,7 +524,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
   const workspaceItems: { key: TabKey; label: string; icon: string }[] = [
     { key: 'projects', label: 'Projects', icon: 'ti-folder' },
-    { key: 'output',   label: 'Output',   icon: 'ti-file-export' },
+    { key: 'output',   label: 'Output Schema',   icon: 'ti-file-export' },
   ];
 
   const utilityItems: { key: TabKey; label: string; icon: string }[] = [];
