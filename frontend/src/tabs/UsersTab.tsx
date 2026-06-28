@@ -94,8 +94,7 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
     }
   }
 
-  async function handleInvite(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
+  async function handleInvite(): Promise<void> {
     setInviteError('');
     setInviteSuccess('');
     setInviteLoading(true);
@@ -274,96 +273,74 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
 
       {/* ── Invite Member modal ─────────────────────────────────────────────── */}
       {showInvite && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member" onClick={(e) => { if (e.target === e.currentTarget) closeInviteModal(); }}>
-          <div className="modal-panel users-invite-panel">
-            <div className="modal-header">
-              <h3 className="modal-title">
-                <i className="ti ti-user-plus" aria-hidden="true" />
-                Invite Team Member
-              </h3>
-              <button className="modal-close" onClick={closeInviteModal} aria-label="Close">
-                <i className="ti ti-x" aria-hidden="true" />
-              </button>
+        <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member" onClick={(e) => { if (e.target === e.currentTarget) closeInviteModal(); }}>
+          <div className="proj-modal">
+            <h3>Invite Team Member</h3>
+
+            <div className="field-row">
+              <label htmlFor="invite-email">Email address</label>
+              <input
+                id="invite-email"
+                type="email"
+                placeholder="colleague@company.com"
+                value={inviteForm.email}
+                onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+                required
+                autoFocus
+              />
             </div>
 
-            <form className="users-invite-form" onSubmit={(e) => { void handleInvite(e); }}>
-              <div className="form-field">
-                <label className="form-label" htmlFor="invite-email">Email address</label>
-                <input
-                  id="invite-email"
-                  className="form-input"
-                  type="email"
-                  placeholder="colleague@company.com"
-                  value={inviteForm.email}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
-                  required
-                  autoFocus
-                />
-              </div>
+            <div className="field-row">
+              <label htmlFor="invite-role">Role</label>
+              <select
+                id="invite-role"
+                value={inviteForm.role}
+                onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as OrgRole }))}
+              >
+                {inviteRoleOptions.map((r) => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]} — {ROLE_DESCRIPTIONS[r]}</option>
+                ))}
+              </select>
+            </div>
 
-              <div className="form-field">
-                <label className="form-label" htmlFor="invite-role">Role</label>
-                <select
-                  id="invite-role"
-                  className="form-input"
-                  value={inviteForm.role}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as OrgRole }))}
-                >
-                  {inviteRoleOptions.map((r) => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]} — {ROLE_DESCRIPTIONS[r]}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label className="form-label" htmlFor="invite-pw">Temporary password</label>
-                <div className="form-input-group">
+            <div className="field-row" style={{ alignItems: 'flex-start', paddingTop: '2px' }}>
+              <label htmlFor="invite-pw" style={{ paddingTop: '8px' }}>
+                Temporary password
+              </label>
+              <div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
                     id="invite-pw"
-                    className="form-input form-input--with-icon"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Min. 8 characters"
                     value={inviteForm.temporaryPassword}
                     onChange={(e) => setInviteForm((f) => ({ ...f, temporaryPassword: e.target.value }))}
                     required
                     minLength={8}
+                    style={{ paddingRight: '36px', width: '100%' }}
                   />
                   <button
                     type="button"
-                    className="form-input-icon-btn"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
                   >
                     <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'}`} aria-hidden="true" />
                   </button>
                 </div>
-                <p className="form-hint">Share this password with the user out-of-band. They can change it after logging in.</p>
+                <p className="helper-text" style={{ marginTop: '4px' }}>Share with the user out-of-band. They can change it after logging in.</p>
               </div>
+            </div>
 
-              {inviteError && (
-                <div className="users-tab-error" role="alert">
-                  <i className="ti ti-alert-circle" aria-hidden="true" />
-                  {inviteError}
-                </div>
-              )}
+            {inviteError   && <p className="feedback feedback--error">{inviteError}</p>}
+            {inviteSuccess && <p className="feedback feedback--success">{inviteSuccess}</p>}
 
-              {inviteSuccess && (
-                <div className="users-invite-success" role="status">
-                  <i className="ti ti-circle-check" aria-hidden="true" />
-                  {inviteSuccess}
-                </div>
-              )}
-
-              <div className="modal-footer">
-                <button type="button" className="btn-ghost" onClick={closeInviteModal}>Cancel</button>
-                <button type="submit" className="btn-primary" disabled={inviteLoading}>
-                  {inviteLoading
-                    ? <><i className="ti ti-loader-2 users-spinner" aria-hidden="true" /> Creating…</>
-                    : <><i className="ti ti-user-plus" aria-hidden="true" /> Create Account</>
-                  }
-                </button>
-              </div>
-            </form>
+            <div className="button-row">
+              <button type="button" onClick={() => { void handleInvite(); }} disabled={inviteLoading}>
+                {inviteLoading ? 'Creating…' : 'Create Account'}
+              </button>
+              <button type="button" data-variant="secondary" onClick={closeInviteModal}>Cancel</button>
+            </div>
           </div>
         </div>
       )}

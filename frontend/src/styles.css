@@ -3647,7 +3647,8 @@ button[data-variant="danger"]:hover { background: rgba(224,82,82,0.08); }
 .team-action-btn--deactivate:hover { background: rgba(224,82,82,0.1); border-color: #e05252; color: #e05252; }
 .team-action-btn--activate:hover   { background: rgba(76,175,80,0.1); border-color: #66bb6a; color: #66bb6a; }
 
-.feedback--error { color: #e05252; }
+.feedback--error   { color: #e05252; }
+.feedback--success { color: #2da55e; }
 
 /* ── Document Generation Hub ──────────────────────────────────────────────── */
 
