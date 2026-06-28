@@ -15,27 +15,39 @@ const baseProps = {
   onTestJira: noop,
 };
 
-describe('SettingsTab', () => {
+describe('SettingsTab — LLM section', () => {
   it('renders without crashing', () => {
-    render(<SettingsTab {...baseProps} />);
-    expect(screen.getByText('Integrations')).toBeTruthy();
+    render(<SettingsTab {...baseProps} section="llm" />);
+    expect(screen.getByText('LLM Settings')).toBeTruthy();
   });
 
-  it('renders all three action buttons', () => {
-    render(<SettingsTab {...baseProps} />);
-    expect(screen.getByText('Save Settings')).toBeTruthy();
-    expect(screen.getByText('Test LLM')).toBeTruthy();
-    expect(screen.getByText('Test Jira / Xray')).toBeTruthy();
+  it('renders Save and Test connection buttons', () => {
+    render(<SettingsTab {...baseProps} section="llm" />);
+    expect(screen.getByText('Save')).toBeTruthy();
+    expect(screen.getByText('Test connection')).toBeTruthy();
   });
 
-  it('disables buttons when isBusy', () => {
-    render(<SettingsTab {...baseProps} isBusy={true} />);
-    const saveBtn = screen.getByText('Save Settings') as HTMLButtonElement;
+  it('disables Save when isBusy', () => {
+    render(<SettingsTab {...baseProps} section="llm" isBusy={true} />);
+    const saveBtn = screen.getByText('Save') as HTMLButtonElement;
     expect(saveBtn.disabled).toBe(true);
   });
 
   it('renders feedback text', () => {
-    render(<SettingsTab {...baseProps} feedback="Settings saved successfully." />);
-    expect(screen.getByText('Settings saved successfully.')).toBeTruthy();
+    render(<SettingsTab {...baseProps} section="llm" feedback="Settings saved." />);
+    expect(screen.getByText('Settings saved.')).toBeTruthy();
+  });
+});
+
+describe('SettingsTab — Jira section', () => {
+  it('renders without crashing', () => {
+    render(<SettingsTab {...baseProps} section="jira" />);
+    expect(screen.getByText('Jira & Xray')).toBeTruthy();
+  });
+
+  it('renders Jira connection fields', () => {
+    render(<SettingsTab {...baseProps} section="jira" />);
+    expect(screen.getByLabelText(/Jira URL/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Jira Email/i)).toBeTruthy();
   });
 });

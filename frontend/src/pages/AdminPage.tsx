@@ -38,6 +38,7 @@ const NAV_GROUPS: AdminGroup[] = [
     label: 'AI Configuration',
     icon: 'ti-brain',
     items: [
+      { id: 'llm-settings',      label: 'LLM Settings',       icon: 'ti-sliders',         built: true  },
       { id: 'prompts',           label: 'Prompts',            icon: 'ti-message-bolt',    built: true  },
       { id: 'output-templates',  label: 'Output Templates',   icon: 'ti-template',        built: false },
       { id: 'llm-providers',    label: 'LLM Providers',      icon: 'ti-cpu',             built: true  },
@@ -218,9 +219,9 @@ export function AdminPage({
             <PromptsTab activeProjectId={activeProjectId} activeProjectName={activeProjectName} />
           </ErrorBoundary>
         );
-      case 'jira':
+      case 'llm-settings':
         return (
-          <ErrorBoundary tabName="Integrations">
+          <ErrorBoundary tabName="LLM Settings">
             <SettingsTab
               settings={settings}
               availableModels={availableModels}
@@ -230,6 +231,23 @@ export function AdminPage({
               onSave={onSave}
               onTestLlm={onTestLlm}
               onTestJira={onTestJira}
+              section="llm"
+            />
+          </ErrorBoundary>
+        );
+      case 'jira':
+        return (
+          <ErrorBoundary tabName="Jira & Xray">
+            <SettingsTab
+              settings={settings}
+              availableModels={availableModels}
+              isBusy={isBusy}
+              feedback={feedback}
+              onFieldChange={onFieldChange}
+              onSave={onSave}
+              onTestLlm={onTestLlm}
+              onTestJira={onTestJira}
+              section="jira"
             />
           </ErrorBoundary>
         );
