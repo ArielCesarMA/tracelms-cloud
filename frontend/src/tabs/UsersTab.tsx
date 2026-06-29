@@ -31,6 +31,47 @@ interface InviteForm {
 
 const INVITE_DEFAULTS: InviteForm = { email: '', role: 'EDITOR', temporaryPassword: '' };
 
+// ── Password utilities ─────────────────────────────────────────────────────────
+
+function generatePassword(): string {
+  const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lower   = 'abcdefghijklmnopqrstuvwxyz';
+  const digits  = '0123456789';
+  const symbols = '!@#$%^&*';
+  const all     = upper + lower + digits + symbols;
+  const arr     = new Uint32Array(16);
+  crypto.getRandomValues(arr);
+  const chars: string[] = [
+    upper  [arr[0] % upper.length],
+    lower  [arr[1] % lower.length],
+    digits [arr[2] % digits.length],
+    symbols[arr[3] % symbols.length],
+    ...Array.from({ length: 12 }, (_, i) => all[arr[4 + i] % all.length]),
+  ];
+  const shuffle = new Uint32Array(chars.length);
+  crypto.getRandomValues(shuffle);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = shuffle[i] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
+
+function scorePassword(pw: string): 0 | 1 | 2 | 3 | 4 {
+  if (!pw) return 0;
+  let s = 0;
+  if (pw.length >= 8)  s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  return Math.min(s, 4) as 0 | 1 | 2 | 3 | 4;
+}
+
+const STRENGTH_LABELS: Record<0 | 1 | 2 | 3 | 4, string> = {
+  0: '', 1: 'Weak', 2: 'Fair', 3: 'Good', 4: 'Strong',
+};
+
 export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX.Element {
   const [users, setUsers]         = useState<AuthUser[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -44,6 +85,7 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState('');
   const [showPassword, setShowPassword]   = useState(false);
+  const [pwCopied, setPwCopied]           = useState(false);
 
   const isOwner = currentUserRole === 'OWNER';
   const canInvite = isOwner || currentUserRole === 'ADMIN';
@@ -317,6 +359,23 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                 />
                 <button
                   type="button"
+                  className="invite-pw-generate"
+                  onClick={() => {
+                    const pw = generatePassword();
+                    setInviteForm((f) => ({ ...f, temporaryPassword: pw }));
+                    setShowPassword(true);
+                    void navigator.clipboard.writeText(pw).then(() => {
+                      setPwCopied(true);
+                      setTimeout(() => setPwCopied(false), 2000);
+                    });
+                  }}
+                  title="Generate a strong password and copy to clipboard"
+                >
+                  <i className="ti ti-wand" aria-hidden="true" />
+                  {pwCopied ? 'Copied!' : 'Generate'}
+                </button>
+                <button
+                  type="button"
                   className="invite-pw-toggle"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -324,6 +383,19 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
                   <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'}`} aria-hidden="true" />
                 </button>
               </div>
+              {inviteForm.temporaryPassword && (() => {
+                const score = scorePassword(inviteForm.temporaryPassword);
+                return (
+                  <div className="invite-pw-strength">
+                    {([1, 2, 3, 4] as const).map((i) => (
+                      <div key={i} className={`invite-pw-strength-seg${score >= i ? ` invite-pw-strength-seg--s${score}` : ''}`} />
+                    ))}
+                    <span className={`invite-pw-strength-label invite-pw-strength-label--s${score}`}>
+                      {STRENGTH_LABELS[score]}
+                    </span>
+                  </div>
+                );
+              })()}
               <p className="helper-text">Share credentials with the user directly — no email is sent automatically.</p>
             </div>
 
