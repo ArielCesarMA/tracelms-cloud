@@ -315,7 +315,7 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
 
       {/* ── Invite Member modal ─────────────────────────────────────────────── */}
       {showInvite && (
-        <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member" onClick={(e) => { if (e.target === e.currentTarget) closeInviteModal(); }}>
+        <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member">
           <div className="proj-modal users-invite-modal">
             <h3>Invite Team Member</h3>
 
