@@ -2236,60 +2236,9 @@ button[data-variant="danger"]:hover:not(:disabled),
 .req-delete-btn:hover { color: var(--red); background: var(--red-subtle); }
 .req-delete-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-/* Row Detail Panel */
-.req-detail-panel {
-  margin-top: var(--space-3);
-  background: var(--bg-elevated);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  box-shadow: var(--shadow-md);
-}
-
-.req-detail-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.req-detail-reqid {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-.req-detail-summary {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--text-primary);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.req-detail-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-}
-.req-detail-close:hover { color: var(--text-primary); }
-
-.req-detail-label {
-  display: block;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: var(--space-2);
-}
+/* Inline description row (accordion — replaces old detached panel) */
+.req-table-detail td { padding: 0; border-bottom: 1px solid var(--border); }
+.req-desc-detail-grid { grid-template-columns: 1fr; }
 
 .req-detail-textarea {
   width: 100%;

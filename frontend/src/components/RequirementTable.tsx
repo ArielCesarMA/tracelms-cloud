@@ -51,21 +51,7 @@ export const RequirementTable = memo(function RequirementTable({
   const [undoState, setUndoState] = useState<{ row: ExtractedRequirement; index: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [summaryDraft, setSummaryDraft] = useState('');
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // Close detail panel on outside click
-  useEffect(() => {
-    if (!detailRow) return;
-    const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setDetailRow(null);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [detailRow]);
-
-  // Close detail panel on Escape
+  // Close detail row on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -89,9 +75,13 @@ export const RequirementTable = memo(function RequirementTable({
   }, [summaryDraft, onUpdate]);
 
   const openDetail = useCallback((req: ExtractedRequirement) => {
-    setDetailRow(req.reqId);
-    setEditingDesc(req.description);
-  }, []);
+    if (detailRow === req.reqId) {
+      setDetailRow(null);
+    } else {
+      setDetailRow(req.reqId);
+      setEditingDesc(req.description);
+    }
+  }, [detailRow]);
 
   const commitDesc = useCallback((reqId: string) => {
     onUpdate(reqId, 'description', editingDesc);
@@ -115,8 +105,6 @@ export const RequirementTable = memo(function RequirementTable({
   }, [undoState, onUpdate]);
 
   if (!requirements.length) return null;
-
-  const activeDetail = requirements.find((r) => r.reqId === detailRow);
 
   return (
     <div className="req-table-wrapper">
@@ -144,9 +132,10 @@ export const RequirementTable = memo(function RequirementTable({
           </thead>
           <tbody>
             {requirements.map((req, idx) => (
+              <>
               <tr
                 key={req.reqId}
-                className={`req-tr${detailRow === req.reqId ? ' req-tr--active' : ''}`}
+                className={`req-tr${detailRow === req.reqId ? ' req-tr--active scn-table-row--expanded' : ''}`}
                 onClick={() => openDetail(req)}
               >
                 {/* Req ID — sticky col 0 */}
@@ -263,30 +252,31 @@ export const RequirementTable = memo(function RequirementTable({
                   </button>
                 </td>
               </tr>
+              {detailRow === req.reqId && (
+                <tr key={`${req.reqId}-detail`} className="scn-table-detail req-table-detail">
+                  <td colSpan={7}>
+                    <div className="scn-detail-grid req-desc-detail-grid">
+                      <div className="scn-detail-block scn-detail-block--full">
+                        <div className="scn-detail-label">{req.reqId} — Description</div>
+                        <textarea
+                          className="req-detail-textarea"
+                          value={editingDesc}
+                          autoFocus
+                          onChange={(e) => setEditingDesc(e.target.value)}
+                          onBlur={() => commitDesc(req.reqId)}
+                          disabled={isBusy}
+                          placeholder="No description provided."
+                        />
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </>
             ))}
           </tbody>
         </table>
       </div>
-
-      {/* ── Row Detail Panel ── */}
-      {activeDetail && (
-        <div className="req-detail-panel" ref={panelRef} role="dialog" aria-label="Requirement detail">
-          <div className="req-detail-header">
-            <span className="req-detail-reqid">{activeDetail.reqId}</span>
-            <span className="req-detail-summary">{activeDetail.summary}</span>
-            <button type="button" className="req-detail-close" onClick={() => setDetailRow(null)} aria-label="Close">×</button>
-          </div>
-          <label className="req-detail-label">Description</label>
-          <textarea
-            className="req-detail-textarea"
-            value={editingDesc}
-            onChange={(e) => setEditingDesc(e.target.value)}
-            onBlur={() => commitDesc(activeDetail.reqId)}
-            disabled={isBusy}
-            placeholder="No description provided."
-          />
-        </div>
-      )}
     </div>
   );
 });
