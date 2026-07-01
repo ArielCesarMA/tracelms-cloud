@@ -314,3 +314,16 @@ Type errors that only appear at build time — not at dev server startup — are
 - **Build commands:** backend `npm run dev:watch`, frontend `cd frontend && npm run dev`
 - **Type-check:** `npx tsc --noEmit` (backend) · `cd frontend && npx tsc --noEmit` (frontend) · `npm run typecheck:all` (both)
 - **API shape contract:** `{ data: T }` on success · `{ error: string, code?: string }` on failure — enforced in `frontend/src/api/client.ts`
+
+---
+
+## Definition of Done (mandatory — runs after every fix)
+
+A fix is NOT complete until every item below is explicitly verified. Do not commit and do not tell the user it is resolved until this checklist passes.
+
+1. **Type safety** — `npm run typecheck:all` passes. Zero errors. No `@ts-ignore` or `as any` introduced.
+2. **Build clean** — `cd frontend && npm run build` succeeds with no new errors.
+3. **Read/Write symmetry** — If the fix touches a field that renders in the UI, confirm the write path (edit control) also exists and is wired. A display without an edit control is a half-implemented feature.
+4. **Golden path** — State explicitly which user action was walked through to verify the fix end-to-end.
+5. **Regression** — Name the adjacent features that share code with this fix. Confirm they still work.
+6. **Commit and push** — Only after steps 1–5 pass.

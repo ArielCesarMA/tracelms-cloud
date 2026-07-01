@@ -102,3 +102,40 @@ This section extends the design authority into engineering decisions that have d
 - **Bundle lazy loading** — The current bundle is clean, but all 10 tabs are bundled together. Establish `React.lazy + Suspense` per tab before the bundle crosses 350 KB raw — so only the active tab's code is parsed on load.
 
 - **Settings caching** — `GET /api/settings` is called on every app load. The response rarely changes. Add a 30-second in-memory cache on the backend (a module-level variable with a timestamp) to avoid a DB round-trip on every cold load.
+
+---
+
+## Definition of Done (mandatory — runs after every implementation)
+
+A feature is NOT complete until every item below is explicitly verified. Do not summarise work as done, do not commit, and do not tell the user it is ready until this checklist passes.
+
+### Step 1 — Type safety
+Run `npm run typecheck:all`. Zero errors required. No `@ts-ignore` or `as any` introduced.
+
+### Step 2 — Build clean
+Run `cd frontend && npm run build`. Build must succeed with no new errors (bundle size warning is known noise — do not treat as a blocker, but flag if gzip JS exceeds 200 KB growth from the previous run).
+
+### Step 3 — Read/Write symmetry check
+For every field added or changed, confirm **both paths** exist and are wired:
+- **Read path** — the value renders correctly in the UI (badge, label, text, table cell).
+- **Write path** — the user has a control to change it (select, input, toggle, button). If the field is intentionally read-only, state that explicitly.
+
+A badge without an edit control is a half-implemented feature. Do not declare done.
+
+### Step 4 — DB enum checklist (only if a DB enum was added or changed)
+- [ ] Prisma schema updated + `npx prisma db push` run
+- [ ] Backend route type union updated
+- [ ] Frontend TypeScript type updated (`frontend/src/types.ts`)
+- [ ] API client payload type updated (`frontend/src/api/client.ts`)
+- [ ] Display badge / label added (read path)
+- [ ] Badge CSS added to `styles.css`
+- [ ] **Edit form field + state added (write path)**
+- [ ] Filter / sort UI updated if the new value affects list behaviour
+
+### Step 5 — Golden path verification
+State explicitly which user action was mentally walked through to verify the feature end-to-end. Example: "Opened Projects tab → clicked Edit on project → changed Status to Completed → clicked Save → confirmed blue Completed badge appeared on card." If the dev server is not running, remind the user to hard-refresh (`Ctrl+Shift+R`) after `npm run build`.
+
+### Step 6 — Regression check
+Name the adjacent features that share code with this change. Confirm they are not broken. Example: if `ProjectsTab.tsx` was edited, confirm that project creation, member management, and generation linking still work as expected.
+
+Only after all six steps pass: commit, push, and report done.
