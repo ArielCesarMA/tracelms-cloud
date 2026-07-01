@@ -91,7 +91,7 @@ export class GroqProvider implements LLMProvider {
               role: 'user',
               content: [
                 { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-                { type: 'text', text: 'Analyze this image and extract software requirements as instructed.' },
+                { type: 'text', text: 'Carefully examine every part of this image and extract ALL software requirements you can find or infer. Cover every visible UI element, navigation item, button, data field, badge, card, and user-facing behaviour. Do not stop early. Return a complete JSON array — aim for completeness over brevity.' },
               ],
             },
           ],
