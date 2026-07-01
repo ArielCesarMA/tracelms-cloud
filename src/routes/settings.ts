@@ -58,6 +58,7 @@ settingsRouter.post('/test-llm', wrap(async (req: Request, res: Response) => {
     llmApiKey: string;
   };
 
+  // keySet only — never log the key value or any slice of it
   if (process.env.LOG_LEVEL === 'debug') console.log(`[test-llm] provider=${llmProvider} model=${llmModel} keySet=${!!llmApiKey}`);
 
   if (!llmProvider || !llmModel) {
