@@ -2144,6 +2144,30 @@ button[data-variant="danger"]:hover:not(:disabled),
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+.req-td--description { cursor: pointer; }
+.req-desc-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--space-1);
+  padding: 0 4px;
+  height: 18px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  vertical-align: middle;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+.req-desc-expand-btn:hover {
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+}
 
 .req-inline-input {
   width: 100%;

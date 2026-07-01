@@ -178,11 +178,16 @@ export const RequirementTable = memo(function RequirementTable({
                   )}
                 </td>
 
-                {/* Description — truncated preview, click row opens panel */}
-                <td className="req-td req-td--description">
-                  <span className="req-desc-preview" title="Click to view and edit full description">
-                    {req.description}
-                  </span>
+                {/* Description — truncated preview; ⋯ button opens detail panel */}
+                <td className="req-td req-td--description" onClick={(e) => { e.stopPropagation(); openDetail(req); }}>
+                  <span className="req-desc-preview">{req.description}</span>
+                  <button
+                    type="button"
+                    className="req-desc-expand-btn"
+                    title="View and edit full description"
+                    aria-label={`Expand description for ${req.reqId}`}
+                    onClick={(e) => { e.stopPropagation(); openDetail(req); }}
+                  >⋯</button>
                 </td>
 
                 {/* Issue Type */}
