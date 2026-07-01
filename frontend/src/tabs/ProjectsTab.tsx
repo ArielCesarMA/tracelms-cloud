@@ -25,11 +25,17 @@ type Props = {
 
 const PROJECT_ROLES: ProjectRole[] = ['LEAD', 'EDITOR', 'REVIEWER', 'VIEWER'];
 
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE:   'Available',
+  DRAFT:    'Draft',
+  ARCHIVED: 'Archived',
+};
+
 function StatusBadge({ status }: { status: string }) {
   const cls = status === 'ACTIVE' ? 'proj-badge proj-badge--active'
     : status === 'DRAFT' ? 'proj-badge proj-badge--draft'
     : 'proj-badge proj-badge--archived';
-  return <span className={cls}>{status}</span>;
+  return <span className={cls}>{STATUS_LABELS[status] ?? status}</span>;
 }
 
 export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjectActivate, onGenerationLoad }: Props): JSX.Element {
