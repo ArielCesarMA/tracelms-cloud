@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Tip } from '../components/Tip';
 import { type Settings } from '../types';
-import { useAuth, isOwner } from '../contexts/AuthContext';
+import { useAuth, canManageUsers } from '../contexts/AuthContext';
 
 type Props = {
   settings: Settings;
@@ -19,7 +19,7 @@ export const SettingsTab = memo(function SettingsTab({
   settings, availableModels, isBusy, feedback, onFieldChange, onSave, onTestLlm, onTestJira, section,
 }: Props): JSX.Element {
   const { user: authUser } = useAuth();
-  const isSelfOwner = isOwner(authUser?.role);
+  const isSelfOwner = canManageUsers(authUser?.role);
 
   return (
     <section className="panel">

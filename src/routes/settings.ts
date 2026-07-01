@@ -26,8 +26,8 @@ settingsRouter.get('/', wrap(async (req: Request, res: Response) => {
   });
 }));
 
-// Save settings — Owner only (global settings affect all users)
-settingsRouter.post('/', requireRole('OWNER'), wrap(async (req: Request, res: Response) => {
+// Save settings — Owner and Admin (global settings affect all users)
+settingsRouter.post('/', requireRole('OWNER', 'ADMIN'), wrap(async (req: Request, res: Response) => {
   const { userId } = (req as AuthenticatedRequest).user;
   const incoming = req.body as Record<string, string>;
   // If the frontend sends the masked placeholder, reload the real value from DB
