@@ -116,6 +116,21 @@ ENCRYPTION_KEY="..."              # 32-character key for AES-256-GCM
 - **Sidebar layout** — Fixed `--sidebar-w: 220px` left sidebar. Main area uses `width: calc(100vw - var(--sidebar-w))`. Responsive breakpoints: 700px (narrow), 540px (icon-only).
 - **Tests** — Live in `src/**/__tests__/` (backend) and `frontend/src/**/__tests__/` (frontend). Pre-existing `@testing-library` type errors in test files are known noise — exclude from FAIL status in CI.
 - **Prompt files** — LLM system prompts live in `src/prompts/` as `.txt` files, validated by `npm run validate:prompts`.
+- **Read/write symmetry** — Every field that renders in the UI must also be editable in the UI unless it is explicitly read-only by design. Before closing any feature that adds a new field: confirm both the display path (badge, label, text) AND the write path (select, input, toggle) exist and are wired to state.
+
+## Feature Completeness Checklist
+
+### Adding a new DB enum value (e.g. ProjectStatus, OrgRole)
+- [ ] Prisma schema updated + `npx prisma db push` run
+- [ ] Backend route type union updated (`src/routes/*.ts`)
+- [ ] Frontend TypeScript type updated (`frontend/src/types.ts`)
+- [ ] API client payload type updated (`frontend/src/api/client.ts`)
+- [ ] Display badge / label added (read path)
+- [ ] Badge CSS added to `styles.css`
+- [ ] **Edit form field + state added (write path)** ← most commonly missed
+- [ ] Filter / sort UI updated if the new value affects list behaviour
+- [ ] `npm run typecheck:all` passes
+- [ ] Build clean (`cd frontend && npm run build`)
 
 ## Claude Skills Available
 
