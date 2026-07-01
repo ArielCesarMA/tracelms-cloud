@@ -361,7 +361,10 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const clearAll = useCallback((): void => {
     localStorage.setItem('tracelms-session-cleared', 'true');
     setIsBusy(false);
-    // Clear the staged file queue and all generated artifacts.
+    // Clear all input fields, staged files, and generated artifacts.
+    setManualText('');
+    setInstructionText('');
+    setUploadedRequirements([]);
     setUploadDrafts([]);
     setRequirementsReviewed(false);
     setEnhancement(emptyEnhancement);
