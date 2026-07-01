@@ -215,9 +215,9 @@ export const RequirementsTab = memo(function RequirementsTab({
           <div className="req-source-header-left">
             <span className="req-source-badge">1</span>
             <div>
-              <p className="req-source-title">File Upload</p>
+              <p className="req-source-title">Upload Source Documents</p>
               <p className="req-source-desc">
-                Upload documents or screenshots and extract structured requirements via AI.
+                Upload user stories, BRDs, specs, or screenshots — AI extracts testable requirements from your source material.
               </p>
             </div>
           </div>
@@ -302,7 +302,7 @@ export const RequirementsTab = memo(function RequirementsTab({
           className="req-manual-textarea"
           value={manualText}
           onChange={(e) => onManualTextChange(e.target.value)}
-          placeholder="Paste or type requirements here — user stories, BRD/SRS content, or free-form text. Combined with uploaded files in one extraction call."
+          placeholder="Paste user stories, epics, feature descriptions, or BRD/SRS text — AI will extract and structure testable requirements from your source material."
           disabled={isBusy || isReadOnly}
           rows={3}
           aria-label="Manual requirements input"
@@ -383,9 +383,9 @@ export const RequirementsTab = memo(function RequirementsTab({
           <div className="req-source-header-left">
             <span className="req-source-badge">2</span>
             <div>
-              <p className="req-source-title">Pull from Jira</p>
+              <p className="req-source-title">Pull Jira Issues</p>
               <p className="req-source-desc">
-                Fetch requirements directly from Jira. Credentials must be configured in Integrations.
+                Fetch Jira issues (user stories, epics, tasks) as source material — AI extracts testable requirements from their descriptions. Credentials required in Integrations.
               </p>
             </div>
           </div>
