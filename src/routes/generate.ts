@@ -307,15 +307,22 @@ generateRouter.post('/extract-image-requirements', wrap(async (req: Request, res
     const { text } = await service.completeVision(imageBase64, mimeType, systemPrompt);
 
     // Parse the JSON array returned by the vision LLM
-    let requirements: unknown[] = [];
     const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     const jsonText = fenceMatch ? fenceMatch[1].trim() : text.trim();
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(jsonText);
-      requirements = Array.isArray(parsed) ? parsed : [];
+      parsed = JSON.parse(jsonText);
     } catch {
-      requirements = [];
+      console.warn('[generate/extract-image-requirements] LLM returned non-JSON — preview=' + text.slice(0, 120));
+      res.status(422).json({ error: 'Image analysis returned unexpected format. Try a different model or re-upload the image.' });
+      return;
     }
+    if (!Array.isArray(parsed)) {
+      console.warn('[generate/extract-image-requirements] LLM returned non-array JSON — preview=' + text.slice(0, 120));
+      res.status(422).json({ error: 'Image analysis returned unexpected format. Try a different model or re-upload the image.' });
+      return;
+    }
+    const requirements: unknown[] = parsed;
 
     res.json({ requirements });
   } catch (err) {

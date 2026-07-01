@@ -222,11 +222,13 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
           : Promise.resolve([]);
 
         // Build one vision call per image (Q1 decision — one call per image, concurrent)
+        let visionFailed = false;
+        let visionErrorMsg = '';
         const visionPromises: Promise<ExtractedRequirement[]>[] = imageDrafts.map((img) =>
           api.extractImageRequirements(img.contentBase64, img.mimeType, settingsRef.current)
             .catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : 'Image extraction failed.';
-              setFeedback(`Image extraction failed for ${img.name}: ${msg}`);
+              visionFailed = true;
+              visionErrorMsg = err instanceof Error ? err.message : 'Image extraction failed.';
               return [] as ExtractedRequirement[];
             })
         );
@@ -244,7 +246,12 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         setUploadedRequirements(merged);
         setRequirementsReviewed(false);
         setIsBusy(false);
-        setFeedback(`Extracted ${merged.length} requirement(s).`);
+        // Don't overwrite the vision error message if extraction failed and produced nothing
+        if (visionFailed && merged.length === 0) {
+          setFeedback(`Image extraction failed: ${visionErrorMsg}`);
+        } else {
+          setFeedback(`Extracted ${merged.length} requirement(s).`);
+        }
       } catch (err: unknown) {
         handleError(err, 'Requirement extraction');
       }
