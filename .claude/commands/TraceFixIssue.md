@@ -319,11 +319,40 @@ Type errors that only appear at build time — not at dev server startup — are
 
 ## Definition of Done (mandatory — runs after every fix)
 
-A fix is NOT complete until every item below is explicitly verified. Do not commit and do not tell the user it is resolved until this checklist passes.
+A fix is NOT complete until every item below is explicitly verified. Do not commit, do not push, and do not tell the user it is resolved until this checklist passes.
 
-1. **Type safety** — `npm run typecheck:all` passes. Zero errors. No `@ts-ignore` or `as any` introduced.
-2. **Build clean** — `cd frontend && npm run build` succeeds with no new errors.
-3. **Read/Write symmetry** — If the fix touches a field that renders in the UI, confirm the write path (edit control) also exists and is wired. A display without an edit control is a half-implemented feature.
-4. **Golden path** — State explicitly which user action was walked through to verify the fix end-to-end.
-5. **Regression** — Name the adjacent features that share code with this fix. Confirm they still work.
-6. **Commit and push** — Only after steps 1–5 pass.
+### Step 1 — Type safety
+Run `npm run typecheck:all`. Zero errors required. No `@ts-ignore` or `as any` introduced. A type error suppressed to unblock a fix is a future security surface — fix the type instead.
+
+### Step 2 — Build clean
+Run `cd frontend && npm run build`. Build must succeed with no new errors. Bundle size warning is known noise — do not treat as a blocker, but flag if gzip JS grows more than 10 KB from the previous run, as it may indicate an unintended import was pulled in by the fix.
+
+### Step 3 — Read/Write symmetry check
+If the fix touches any field that renders in the UI, confirm **both paths** exist and are wired:
+- **Read path** — the corrected value renders in the UI (badge, label, text, table cell).
+- **Write path** — the user has a control to change it (select, input, toggle, button). If intentionally read-only, state that explicitly.
+
+A display without an edit control is a half-implemented feature — do not declare done.
+
+### Step 4 — Root cause stated
+Before closing, write one sentence naming the root cause — not the symptom. Example: *"Root cause: `clearAll()` omitted the 8 Jira Pull state setters when the Jira Pull feature was added."* Not: *"Clear All wasn't clearing Jira fields."* The root cause statement must be specific enough that a future developer could find the same class of bug in a different feature.
+
+### Step 5 — Golden path verification
+State explicitly which user action was walked through end-to-end to verify the fix. Example: *"Opened Requirements tab → filled in Mode (epic) and Epic Key → clicked Clear All → confirmed Mode reset to Single, Epic Key cleared, and Jira requirements list emptied."* If the dev server is not running, instruct the user to hard-refresh (`Ctrl+Shift+R`) after `npm run build`.
+
+### Step 6 — Regression check
+Name the adjacent features that share code with this fix. Confirm they are not broken. Example: *"Fix is in `App.tsx clearAll()` — confirmed that uploaded requirements clear, artifact panels clear, and the generate button disables correctly after clearing."*
+
+### Step 7 — Fix/Resolution summary (required in every response)
+After all steps pass, end the response with a **Fix/Resolution** block in this exact format:
+
+---
+**Fix/Resolution**
+- **Priority:** P3 · Domain C (Logic)
+- **Root cause:** `clearAll()` in `App.tsx` was missing 8 Jira Pull state setters added when the feature launched.
+- **Fix applied:** Added `setJiraMode`, `setSingleIssueKey`, `setMultipleIssueKeys`, `setEpicKey`, `setStoryQuery`, `setStoryOptions`, `setSelectedStoryKeys`, `setJiraRequirements` to the `clearAll` callback in [`frontend/src/App.tsx`](frontend/src/App.tsx:361).
+- **Commit:** `a8bce11` — pushed to `main`.
+- **Verify:** Requirements tab → fill Jira Pull fields → click Clear All → all fields reset to defaults.
+---
+
+This block is mandatory. Do not omit it. Do not tell the user the fix is done without it.
