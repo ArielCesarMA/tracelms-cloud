@@ -20,6 +20,7 @@ import {
   emptyEnhancement,
 } from '../types';
 import * as api from '../api/client';
+import { buildRequirementsPayload } from '../utils';
 
 type Refs = {
   generateAllStepRef: MutableRefObject<number>;
@@ -30,6 +31,7 @@ type Refs = {
   testCasesRef: MutableRefObject<TestCaseItem[]>;
   xrayPushedIssuesRef: MutableRefObject<XrayPushedIssue[]>;
   uploadDraftsRef: MutableRefObject<UploadDraft[]>;
+  uploadedRequirementsRef: MutableRefObject<ExtractedRequirement[]>;
   manualTextRef: MutableRefObject<string>;
   activeProjectIdRef: MutableRefObject<string | null>;
   activeProjectJiraKeyRef: MutableRefObject<string | null>;
@@ -93,7 +95,7 @@ export type TraceLMActions = {
 export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const {
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
-    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, manualTextRef,
+    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, uploadedRequirementsRef, manualTextRef,
     setStatus, setFeedback, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
     setParsedFiles, setDocumentWarnings, setUploadedRequirements, setJiraRequirements,
@@ -369,6 +371,23 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     return { result: analysis, usage };
   }, [settingsRef, setAutomation, setFeedback]);
 
+  const runNfrEnrichment = useCallback(async (reqs: ExtractedRequirement[]): Promise<{ result: ExtractedRequirement[]; usage?: TokenUsage }> => {
+    const hasNfrs = reqs.some((r) => r.requirementType === 'Non-Functional');
+    if (!hasNfrs) return { result: reqs };
+    const { requirements: enriched, usage } = await api.streamNfrEnrichment(
+      reqs,
+      settingsRef.current,
+      (e) => {
+        if (e.type === 'model-info' && e.isReasoning) setFeedback('Reasoning model active — this step may take longer than usual...');
+        else if (e.type === 'chunk') setFeedback(`Enriching NFR requirements with performance benchmarks... (${e.chars.toLocaleString()} chars)`);
+      },
+    );
+    const parsed = (enriched as ExtractedRequirement[]) ?? reqs;
+    setUploadedRequirements(parsed);
+    setFeedback(`NFR enrichment complete — ${parsed.filter((r) => r.requirementType === 'Non-Functional').length} NFR(s) enriched with benchmark guidance.`);
+    return { result: parsed, usage };
+  }, [settingsRef, setUploadedRequirements, setFeedback]);
+
   const generateEnhancement = useCallback((): void => {
     if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before enhancement.'); return; }
     setIsBusy(true);
@@ -429,9 +448,28 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
 
     void (async () => {
       try {
+        // ── NFR Enrichment (pre-phase) ───────────────────────────────────────
+        // Runs only when structured requirements contain at least one NFR.
+        // Appends industry benchmark guidance to NFR descriptions before Phase 1
+        // so Enhancement and Scenario prompts receive enriched context.
+        setTokenUsage(null);
+        const structuredReqs = uploadedRequirementsRef.current;
+        let enrichUsage: TokenUsage | undefined;
+        if (structuredReqs.length > 0 && structuredReqs.some((r) => r.requirementType === 'Non-Functional')) {
+          setGenerationProgress('nfr-enrichment');
+          setFeedback('Enriching NFR requirements with performance benchmarks...');
+          const { result: enriched, usage: eu } = await runNfrEnrichment(structuredReqs);
+          enrichUsage = eu;
+          if (enriched.length > 0) {
+            // Rebuild requirementText from enriched requirements so Phase 1 sees the updated descriptions
+            const newText = buildRequirementsPayload(enriched, [], '');
+            requirementTextRef.current = newText;
+          }
+        }
+
         // ── Phase 1: Enhancement ∥ Scenarios ────────────────────────────────
         setGenerationProgress('phase1');
-        setTokenUsage(null);
+        if (enrichUsage) setTokenUsage(enrichUsage);
         setFeedback('Phase 1 of 3: Enhancement + Scenarios running in parallel...');
         // Each stream reports its own cumulative char count. Track them separately
         // and sum for the feedback label so the two callbacks don't overwrite each other.
@@ -535,7 +573,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         setIsBusy(false);
       }
     })();
-  }, [requirementTextRef, manualTextRef, generateAllStepRef, activeProjectIdRef, setIsBusy, setFeedback, setGenerationProgress, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, onGenerationSaved, handleError]);
+  }, [requirementTextRef, manualTextRef, generateAllStepRef, activeProjectIdRef, uploadedRequirementsRef, setIsBusy, setFeedback, setGenerationProgress, runNfrEnrichment, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, onGenerationSaved, handleError]);
 
   // ── Xray ────────────────────────────────────────────────────────────────────
 

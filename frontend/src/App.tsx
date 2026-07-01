@@ -195,7 +195,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     pushTestCasesToXray, retryFailedPushes, previewXrayPush, clearXrayHistory,
   } = useTraceLMMessages({
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
-    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, manualTextRef,
+    settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, uploadedRequirementsRef, manualTextRef,
     activeProjectIdRef, activeProjectJiraKeyRef,
     setStatus, setFeedback, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,

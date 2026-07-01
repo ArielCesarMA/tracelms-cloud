@@ -537,6 +537,54 @@ generateRouter.post('/automation', wrap(async (req: Request, res: Response) => {
 //   data: {"type":"batch","current":K,"total":N}\n\n
 // ==================================================================
 
+// POST /api/generate/enrich-nfr/stream
+//
+// Receives the extracted requirements array and enriches every Non-Functional
+// requirement with industry benchmark guidance appended to its description.
+// Non-NFR requirements pass through unchanged.
+// If no NFRs are present, the array is returned immediately without an LLM call.
+generateRouter.post('/enrich-nfr/stream', wrap(async (req: Request, res: Response) => {
+  const { requirements, settings } = req.body as {
+    requirements: Array<{ requirementType: string; [key: string]: unknown }>;
+    settings: Settings;
+  };
+  const sse = openSse(res);
+
+  if (!Array.isArray(requirements) || requirements.length === 0) {
+    sse.send({ type: 'done', requirements: [] });
+    sse.end();
+    return;
+  }
+
+  const hasNfrs = requirements.some((r) => r.requirementType === 'Non-Functional');
+  if (!hasNfrs) {
+    // No NFRs — return unchanged immediately, no LLM cost
+    console.log('[enrich-nfr/stream] no NFR requirements found — skipping enrichment');
+    sse.send({ type: 'done', requirements });
+    sse.end();
+    return;
+  }
+
+  try {
+    sse.send({ type: 'started' });
+    const systemPrompt = loadPrompt('nfr-enrichment.txt');
+    const userPrompt = `Requirements:\n${JSON.stringify(requirements, null, 2)}`;
+    let chars = 0;
+    const { text, usage } = await callLLMStream(settings, systemPrompt, userPrompt, (chunk) => {
+      chars += chunk.length;
+      sse.send({ type: 'chunk', text: chunk, chars });
+    }, () => sse.send({ type: 'model-info', isReasoning: true }));
+
+    const enriched = extractJson(text) as typeof requirements;
+    console.log(`[enrich-nfr/stream] enriched ${requirements.length} requirements (${requirements.filter((r) => r.requirementType === 'Non-Functional').length} NFRs)`);
+    sse.send({ type: 'done', requirements: enriched, usage });
+  } catch (err) {
+    sse.send({ type: 'error', message: err instanceof Error ? err.message : 'Failed to enrich NFR requirements.' });
+  } finally {
+    sse.end();
+  }
+}));
+
 // POST /api/generate/enhancement/stream
 generateRouter.post('/enhancement/stream', wrap(async (req: Request, res: Response) => {
   const { requirements, settings, projectId } = req.body as { requirements: string; settings: Settings; projectId?: string };

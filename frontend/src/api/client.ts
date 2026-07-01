@@ -437,6 +437,14 @@ export async function generateAutomation(
 
 // ── Streaming variants ────────────────────────────────────────────────────────
 
+export async function streamNfrEnrichment(
+  requirements: ExtractedRequirement[],
+  settings: Settings,
+  onProgress?: (e: SseProgressEvent) => void,
+): Promise<{ requirements: ExtractedRequirement[]; usage?: TokenUsage }> {
+  return streamPost('/generate/enrich-nfr/stream', { requirements, settings }, onProgress);
+}
+
 export async function streamEnhancement(
   requirements: string,
   settings: Settings,

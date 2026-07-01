@@ -58,6 +58,7 @@ export type ExtractedRequirement = {
   priority: RequirementPriority;
   source: 'upload' | 'jira';
   lowConfidence?: boolean;
+  nfrSubcategory?: string;
 };
 
 export type UploadDraft = {
