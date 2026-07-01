@@ -135,7 +135,6 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const FRIENDLY_ERRORS: Record<string, string> = {
     'LLM test':               'Unable to connect to the AI provider. Check your API key and model in LLM Providers.',
     'Jira test':              'Could not connect to Jira. Check your URL, email, and API token in Integrations.',
-    'Jira pull':              'Could not fetch requirements from Jira.',
     'Jira search':            'Jira story search failed.',
     'Requirement extraction': 'Could not extract requirements from your content.',
     'Enhancement':            'Requirement enhancement failed.',

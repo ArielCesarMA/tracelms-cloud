@@ -507,7 +507,8 @@ export const RequirementsTab = memo(function RequirementsTab({
         </div>
 
         {/* ── Feedback — visible without scrolling during extraction/generation */}
-        {feedback && (
+        {/* jiraError takes over the feedback channel when set — suppress sticky feedback so the two don't conflict */}
+        {feedback && !jiraError && (
           <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} className="req-sticky-feedback" />
         )}
 
