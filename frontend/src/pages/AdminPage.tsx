@@ -15,36 +15,27 @@ type AdminLeaf = {
   built: boolean;
 };
 
-type AdminGroup = {
-  id: string;
-  label: string;
-  icon: string;
-  ownerOnly?: boolean;
-  items: AdminLeaf[];
-};
+type AdminNavItem =
+  | { type: 'leaf'; id: string; label: string; icon: string; built: boolean; ownerOnly?: boolean }
+  | { type: 'group'; id: string; label: string; icon: string; ownerOnly?: boolean; items: AdminLeaf[] };
 
-const NAV_GROUPS: AdminGroup[] = [
+const NAV_ITEMS: AdminNavItem[] = [
+  { type: 'leaf',  id: 'users',  label: 'Users',              icon: 'ti-users',          built: true  },
+  { type: 'leaf',  id: 'roles',  label: 'Roles & Permissions', icon: 'ti-shield-lock',   built: false },
   {
-    id: 'people',
-    label: 'People',
-    icon: 'ti-users',
-    items: [
-      { id: 'users',             label: 'Users',              icon: 'ti-user',            built: true  },
-      { id: 'roles',             label: 'Roles & Permissions', icon: 'ti-shield-lock',    built: false },
-    ],
-  },
-  {
+    type: 'group',
     id: 'ai-config',
     label: 'AI Configuration',
     icon: 'ti-brain',
     items: [
-      { id: 'llm-settings',      label: 'LLM Settings',       icon: 'ti-sliders',         built: true  },
       { id: 'prompts',           label: 'Prompts',            icon: 'ti-message-bolt',    built: true  },
       { id: 'output-templates',  label: 'Output Templates',   icon: 'ti-template',        built: false },
-      { id: 'llm-providers',    label: 'LLM Providers',      icon: 'ti-cpu',             built: true  },
+      { id: 'llm-providers',     label: 'LLM Providers',      icon: 'ti-cpu',             built: true  },
+      { id: 'llm-settings',      label: 'LLM Configuration',  icon: 'ti-sliders',         built: true  },
     ],
   },
   {
+    type: 'group',
     id: 'integrations',
     label: 'Integrations',
     icon: 'ti-plug',
@@ -54,15 +45,9 @@ const NAV_GROUPS: AdminGroup[] = [
       { id: 'github',            label: 'GitHub',             icon: 'ti-brand-github',    built: false },
     ],
   },
+  { type: 'leaf',  id: 'audit-logs', label: 'Audit Logs',     icon: 'ti-clipboard-list', built: false },
   {
-    id: 'audit',
-    label: 'Audit Logs',
-    icon: 'ti-clipboard-list',
-    items: [
-      { id: 'audit-logs',        label: 'Audit Logs',         icon: 'ti-clipboard-list',  built: false },
-    ],
-  },
-  {
+    type: 'group',
     id: 'system',
     label: 'System Settings',
     icon: 'ti-adjustments',
@@ -80,7 +65,14 @@ const NAV_GROUPS: AdminGroup[] = [
   },
 ];
 
-const ADMIN_HIDDEN_GROUPS = new Set(['system']);
+// Flatten all leaf items (for lookup helpers)
+function allLeaves(items: AdminNavItem[]): AdminLeaf[] {
+  return items.flatMap((item) =>
+    item.type === 'leaf'
+      ? [{ id: item.id, label: item.label, icon: item.icon, built: item.built }]
+      : item.items
+  );
+}
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
 
@@ -97,7 +89,31 @@ function ComingSoon({ label }: { label: string }): JSX.Element {
   );
 }
 
-// ─── AdminNavGroup ────────────────────────────────────────────────────────────
+// ─── AdminNavLeaf (flat top-level item) ──────────────────────────────────────
+
+function AdminNavLeaf({
+  item,
+  activeId,
+  onSelect,
+}: {
+  item: Extract<AdminNavItem, { type: 'leaf' }>;
+  activeId: string;
+  onSelect: (id: string) => void;
+}): JSX.Element {
+  return (
+    <button
+      className={`admin-nav-item admin-nav-item--top${activeId === item.id ? ' admin-nav-item--active' : ''}${!item.built ? ' admin-nav-item--soon' : ''}`}
+      onClick={() => onSelect(item.id)}
+      aria-current={activeId === item.id ? 'page' : undefined}
+    >
+      <i className={`ti ${item.icon} admin-nav-item-icon`} aria-hidden="true" />
+      <span>{item.label}</span>
+      {!item.built && <span className="admin-nav-soon-dot" aria-label="Coming soon" />}
+    </button>
+  );
+}
+
+// ─── AdminNavGroup (collapsible group) ───────────────────────────────────────
 
 function AdminNavGroup({
   group,
@@ -105,7 +121,7 @@ function AdminNavGroup({
   onSelect,
   defaultOpen,
 }: {
-  group: AdminGroup;
+  group: Extract<AdminNavItem, { type: 'group' }>;
   activeId: string;
   onSelect: (id: string) => void;
   defaultOpen: boolean;
@@ -187,15 +203,19 @@ export function AdminPage({
 }: AdminPageProps): JSX.Element {
   const isOwner = currentUserRole === 'OWNER';
 
-  const visibleGroups = NAV_GROUPS.filter((g) =>
-    isOwner ? true : !ADMIN_HIDDEN_GROUPS.has(g.id)
+  const visibleItems = NAV_ITEMS.filter((item) =>
+    isOwner ? true : !item.ownerOnly
   );
 
-  const firstBuilt = visibleGroups.flatMap((g) => g.items).find((i) => i.built);
+  const leaves = allLeaves(visibleItems);
+  const firstBuilt = leaves.find((i) => i.built);
   const [activeId, setActiveId] = useState(firstBuilt?.id ?? 'users');
 
-  const activeItem  = visibleGroups.flatMap((g) => g.items).find((i) => i.id === activeId);
-  const activeGroup = visibleGroups.find((g) => g.items.some((i) => i.id === activeId));
+  const activeItem  = leaves.find((i) => i.id === activeId);
+  const activeGroup = visibleItems.find(
+    (item): item is Extract<AdminNavItem, { type: 'group' }> =>
+      item.type === 'group' && item.items.some((i) => i.id === activeId)
+  );
 
   function renderContent(): JSX.Element {
     if (!activeItem?.built) return <ComingSoon label={activeItem?.label ?? ''} />;
@@ -269,15 +289,24 @@ export function AdminPage({
         </div>
 
         <nav className="admin-nav-body">
-          {visibleGroups.map((group) => (
-            <AdminNavGroup
-              key={group.id}
-              group={group}
-              activeId={activeId}
-              onSelect={setActiveId}
-              defaultOpen={group.items.some((i) => i.id === activeId)}
-            />
-          ))}
+          {visibleItems.map((item) =>
+            item.type === 'leaf' ? (
+              <AdminNavLeaf
+                key={item.id}
+                item={item}
+                activeId={activeId}
+                onSelect={setActiveId}
+              />
+            ) : (
+              <AdminNavGroup
+                key={item.id}
+                group={item}
+                activeId={activeId}
+                onSelect={setActiveId}
+                defaultOpen={item.items.some((i) => i.id === activeId)}
+              />
+            )
+          )}
         </nav>
 
         <div className="admin-nav-footer">

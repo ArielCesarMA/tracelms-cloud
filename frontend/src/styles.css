@@ -6188,6 +6188,11 @@ button[data-variant="danger"]:hover { background: rgba(224,82,82,0.08); }
 .admin-nav-item--active:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .admin-nav-item--soon { opacity: 0.65; }
 .admin-nav-item-icon { font-size: 14px; flex-shrink: 0; }
+/* Top-level flat items sit directly in the nav body with consistent padding */
+.admin-nav-item--top {
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: 2px;
+}
 .admin-nav-soon-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
