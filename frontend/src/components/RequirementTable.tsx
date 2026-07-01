@@ -17,6 +17,22 @@ const REQUIREMENT_TYPE_GROUPS: { label: string; types: RequirementType[] }[] = [
   { label: 'Governance',   types: ['Compliance'] },
 ];
 
+const NFR_SUBCATEGORY_LABELS: Record<string, string> = {
+  response_time: 'Response Time',
+  throughput: 'Throughput',
+  availability: 'Availability',
+  scalability: 'Scalability',
+  reliability: 'Reliability',
+  recoverability: 'Recoverability',
+  capacity: 'Capacity',
+  maintainability: 'Maintainability',
+  observability: 'Observability',
+  internationalization: 'i18n / L10n',
+  testability: 'Testability',
+  supportability: 'Supportability',
+  portability: 'Portability',
+};
+
 type EditingCell = { rowId: string; col: 'summary' } | null;
 
 type Props = {
@@ -205,6 +221,11 @@ export const RequirementTable = memo(function RequirementTable({
                   </select>
                   {req.source === 'jira' && req.requirementType === 'Functional' && (
                     <span className="req-default-marker">(default)</span>
+                  )}
+                  {req.requirementType === 'Non-Functional' && req.nfrSubcategory && (
+                    <span className="nfr-subcategory-chip">
+                      {NFR_SUBCATEGORY_LABELS[req.nfrSubcategory] ?? req.nfrSubcategory}
+                    </span>
                   )}
                 </td>
 

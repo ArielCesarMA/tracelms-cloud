@@ -79,10 +79,11 @@ export const RequirementsTab = memo(function RequirementsTab({
   const dropRef = useRef<HTMLDivElement>(null);
 
   const { activeStep, secondActiveStep } = useMemo(() => {
-    if (generationProgress === 'done') return { activeStep: 5 };
-    if (generationProgress === 'phase1') return { activeStep: 1, secondActiveStep: 2 };
-    if (generationProgress === 'phase2') return { activeStep: 3 };
-    if (generationProgress === 'phase3') return { activeStep: 4 };
+    if (generationProgress === 'done') return { activeStep: 6 };
+    if (generationProgress === 'nfr-enrichment') return { activeStep: 1 };
+    if (generationProgress === 'phase1') return { activeStep: 2, secondActiveStep: 3 };
+    if (generationProgress === 'phase2') return { activeStep: 4 };
+    if (generationProgress === 'phase3') return { activeStep: 5 };
     return { activeStep: 0 };
   }, [generationProgress]);
 

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 
-const STEPS = ['Enhancement', 'Scenarios', 'Test Cases', 'Automation'] as const;
+const STEPS = ['NFR Enrichment', 'Enhancement', 'Scenarios', 'Test Cases', 'Automation'] as const;
 
 type StepState = 'pending' | 'active' | 'completed';
 
@@ -28,7 +28,7 @@ export const StepStepper = memo(function StepStepper({ activeStep, secondActiveS
     ? 'All steps completed'
     : secondActiveStep != null
     ? `Generating steps ${activeStep} and ${secondActiveStep} in parallel`
-    : `Generating step ${activeStep} of 4`;
+    : `Generating step ${activeStep} of 5`;
 
   return (
     <div

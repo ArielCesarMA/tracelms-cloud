@@ -2113,6 +2113,19 @@ button[data-variant="danger"]:hover:not(:disabled),
   color: var(--blue);
   border: 1px solid rgba(37,99,235,0.25);
 }
+.nfr-subcategory-chip {
+  display: inline-block;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
 
 .req-summary-text {
   display: -webkit-box;
