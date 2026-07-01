@@ -3282,9 +3282,10 @@ button[data-variant="danger"]:hover:not(:disabled),
   border-radius: var(--radius-full);
   padding: 2px 8px;
 }
-.proj-badge--active   { background: #d1fae5; color: #065f46; }
-.proj-badge--draft    { background: #fef9c3; color: #713f12; }
-.proj-badge--archived { background: var(--surface-3); color: var(--text-tertiary); }
+.proj-badge--active    { background: #d1fae5; color: #065f46; }
+.proj-badge--draft     { background: #fef9c3; color: #713f12; }
+.proj-badge--completed { background: #dbeafe; color: #1e40af; }
+.proj-badge--archived  { background: var(--surface-3); color: var(--text-tertiary); }
 
 /* Detail panel */
 .proj-detail {

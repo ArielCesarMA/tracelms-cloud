@@ -116,7 +116,7 @@ projectsRouter.patch('/:id', wrap(async (req: Request, res: Response) => {
   if (!existing) { res.status(404).json({ error: 'Project not found.' }); return; }
 
   const { name, description, status, jiraProjectKey } = req.body as {
-    name?: string; description?: string; status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; jiraProjectKey?: string;
+    name?: string; description?: string; status?: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'; jiraProjectKey?: string;
   };
 
   const updated = await prisma.project.update({

@@ -26,14 +26,16 @@ type Props = {
 const PROJECT_ROLES: ProjectRole[] = ['LEAD', 'EDITOR', 'REVIEWER', 'VIEWER'];
 
 const STATUS_LABELS: Record<string, string> = {
-  ACTIVE:   'Available',
-  DRAFT:    'Draft',
-  ARCHIVED: 'Archived',
+  ACTIVE:    'Available',
+  DRAFT:     'Draft',
+  COMPLETED: 'Completed',
+  ARCHIVED:  'Archived',
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cls = status === 'ACTIVE' ? 'proj-badge proj-badge--active'
-    : status === 'DRAFT' ? 'proj-badge proj-badge--draft'
+  const cls = status === 'ACTIVE'     ? 'proj-badge proj-badge--active'
+    : status === 'DRAFT'              ? 'proj-badge proj-badge--draft'
+    : status === 'COMPLETED'          ? 'proj-badge proj-badge--completed'
     : 'proj-badge proj-badge--archived';
   return <span className={cls}>{STATUS_LABELS[status] ?? status}</span>;
 }

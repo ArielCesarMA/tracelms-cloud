@@ -271,7 +271,7 @@ export type AuthUser = {
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
-export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 
 // Legacy alias kept for existing code; prefer ProjectMember.
 export type StakeholderRole = 'QA Lead' | 'Product Owner' | 'Developer' | 'Observer';

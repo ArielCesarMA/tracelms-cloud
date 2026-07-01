@@ -556,7 +556,7 @@ export async function createProject(data: { name: string; key: string; descripti
 }
 
 export async function updateProject(id: string, data: {
-  name?: string; description?: string; status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; jiraProjectKey?: string;
+  name?: string; description?: string; status?: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'; jiraProjectKey?: string;
 }): Promise<{ project: Project }> {
   return patch(`/projects/${id}`, data);
 }
