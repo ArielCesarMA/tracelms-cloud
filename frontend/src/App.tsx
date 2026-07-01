@@ -254,14 +254,18 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
   const processFiles = useCallback(async (files: File[]): Promise<void> => {
     if (files.length === 0) return;
+    // Fallback MIME map for Windows drag-and-drop where file.type can be ''
+    const EXT_TO_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
     try {
       const next = await Promise.all(
         files.map(async (file): Promise<UploadDraft> => {
-          const isImageFile = (ACCEPTED_IMAGE_MIMES as readonly string[]).includes(file.type);
+          const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+          const resolvedMime = file.type || EXT_TO_MIME[ext] || '';
+          const isImageFile = (ACCEPTED_IMAGE_MIMES as readonly string[]).includes(resolvedMime);
           if (isImageFile && file.size > IMAGE_SIZE_LIMIT_BYTES) {
             return {
               name: file.name,
-              mimeType: file.type,
+              mimeType: resolvedMime,
               contentBase64: '',
               isImage: true,
               thumbnailUrl: URL.createObjectURL(file),
@@ -272,7 +276,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
             const contentBase64 = await resizeImageIfNeeded(file);
             return {
               name: file.name,
-              mimeType: file.type,
+              mimeType: resolvedMime,
               contentBase64,
               isImage: true,
               thumbnailUrl: URL.createObjectURL(file),
@@ -280,7 +284,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
           }
           return {
             name: file.name,
-            mimeType: file.type,
+            mimeType: resolvedMime || file.type,
             contentBase64: await toBase64(file),
           };
         })
