@@ -8,6 +8,7 @@ import {
 import { VISION_CAPABLE_PROVIDERS } from '../utils';
 import { StepStepper } from '../components/StepStepper';
 import { RequirementTable } from '../components/RequirementTable';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 
 const ACCEPTED_EXTS = '.txt,.md,.docx,.pdf,.xlsx,.xls,.csv,.pptx,.png,.jpg,.jpeg,.webp';
 const MAX_REQUIREMENT_CHARS = 50_000;
@@ -34,6 +35,7 @@ type Props = {
   isBusy: boolean;
   isReadOnly?: boolean;
   feedback: string;
+  feedbackDetail?: string;
   selectedProvider: string;
   onInstructionTextChange: (text: string) => void;
   onManualTextChange: (text: string) => void;
@@ -49,6 +51,7 @@ type Props = {
   onRequirementDelete: (reqId: string) => void;
   onJiraRequirementUpdate: (reqId: string, field: keyof ExtractedRequirement, value: string) => void;
   onJiraRequirementDelete: (reqId: string) => void;
+  jiraError?: string;
   onJiraModeChange: (mode: JiraMode) => void;
   onSingleKeyChange: (key: string) => void;
   onMultipleKeysChange: (keys: string) => void;
@@ -65,7 +68,8 @@ export const RequirementsTab = memo(function RequirementsTab({
   requirementsReviewed, generationProgress,
   uploadDrafts, jiraMode, singleIssueKey, multipleIssueKeys,
   epicKey, storyQuery, storyOptions, selectedStoryKeys,
-  isBusy, isReadOnly = false, feedback, selectedProvider,
+  isBusy, isReadOnly = false, feedback, feedbackDetail, selectedProvider,
+  jiraError = '',
   onInstructionTextChange, onManualTextChange, onReviewedChange, onGenerateAll, onClearAll,
   onFileChange, onFilesDropped, onParseFiles, documentWarnings, onDismissWarnings,
   onRequirementUpdate, onRequirementDelete,
@@ -448,6 +452,10 @@ export const RequirementsTab = memo(function RequirementsTab({
           )}
         </div>
 
+        {jiraError && (
+          <p className="req-jira-error" role="alert">{jiraError}</p>
+        )}
+
         {jiraRequirements.length > 0 && (
           <RequirementTable
             requirements={jiraRequirements}
@@ -500,7 +508,7 @@ export const RequirementsTab = memo(function RequirementsTab({
 
         {/* ── Feedback — visible without scrolling during extraction/generation */}
         {feedback && (
-          <p className="feedback req-sticky-feedback" aria-live="polite">{feedback}</p>
+          <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} className="req-sticky-feedback" />
         )}
 
         {/* ── Active project confirmation ───────────────────────────────────── */}

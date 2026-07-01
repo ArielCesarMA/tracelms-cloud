@@ -40,6 +40,7 @@ type Refs = {
 type Setters = {
   setStatus: Dispatch<SetStateAction<string>>;
   setFeedback: Dispatch<SetStateAction<string>>;
+  setFeedbackDetail: Dispatch<SetStateAction<string>>;
   setIsBusy: Dispatch<SetStateAction<boolean>>;
   setSettings: Dispatch<SetStateAction<Settings>>;
   setRequirementText: Dispatch<SetStateAction<string>>;
@@ -59,6 +60,7 @@ type Setters = {
   setXrayPushProgress: Dispatch<SetStateAction<XrayPushProgress | null>>;
   setGenerationProgress: Dispatch<SetStateAction<string>>;
   setTokenUsage: Dispatch<SetStateAction<TokenUsage | null>>;
+  setJiraError: Dispatch<SetStateAction<string>>;
   onEnhancementReceived?: () => void;
   onScenariosReceived?: () => void;
   onChainSettled?: () => void;
@@ -96,13 +98,14 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const {
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
     settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, uploadedRequirementsRef, manualTextRef,
-    setStatus, setFeedback, setIsBusy, setSettings,
+    setStatus, setFeedback, setFeedbackDetail, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
     setParsedFiles, setDocumentWarnings, setUploadedRequirements, setJiraRequirements,
     setStoryOptions, setPulledIssues,
     setEnhancement, setScenarios, setTestCases,
     setXrayPushedIssues, setAutomation,
     setXrayPushPreview, setXrayPushProgress, setGenerationProgress, setTokenUsage,
+    setJiraError,
     onEnhancementReceived, onScenariosReceived, onChainSettled, onGenerateAllDone, onGenerateAllFailed,
     onGenerationSaved, activeProjectIdRef, activeProjectJiraKeyRef,
   } = params;
@@ -125,55 +128,129 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     3: 'automation',
   };
 
+  // ── User-friendly error summaries keyed by operation context ──────────────
+  // Each entry maps the internal context label used in handleError() calls to a
+  // plain-English sentence shown to all users. The raw technical message is kept
+  // in feedbackDetail and revealed only when the user clicks "Details ▸".
+  const FRIENDLY_ERRORS: Record<string, string> = {
+    'LLM test':               'Unable to connect to the AI provider. Check your API key and model in LLM Providers.',
+    'Jira test':              'Could not connect to Jira. Check your URL, email, and API token in Integrations.',
+    'Jira pull':              'Could not fetch requirements from Jira.',
+    'Jira search':            'Jira story search failed.',
+    'Requirement extraction': 'Could not extract requirements from your content.',
+    'Enhancement':            'Requirement enhancement failed.',
+    'Scenarios':              'Scenario generation failed.',
+    'Test Cases':             'Test case generation failed.',
+    'Automation analysis':    'Automation analysis failed.',
+    'Xray push':              'Could not push test cases to Xray.',
+    'Xray retry':             'Retry push to Xray failed.',
+    'Xray preview':           'Could not load the Xray push preview.',
+    'Clear history':          'Could not clear Xray push history.',
+  };
+
+  const STEP_FRIENDLY: Record<number, string> = {
+    1: 'requirement analysis (Enhancement + Scenarios)',
+    2: 'test case generation',
+    3: 'automation analysis',
+  };
+
+  // Detects known transient/billing error patterns in the raw message string so
+  // the main (visible) section can give a more actionable hint than the generic
+  // operation-level label. Returns undefined when no pattern matches, allowing
+  // the caller to fall back to FRIENDLY_ERRORS.
+  function detectKnownPattern(raw: string): string | undefined {
+    const r = raw.toLowerCase();
+    // Token quota / billing exhaustion — all major providers
+    if (
+      r.includes('quota') ||
+      r.includes('credit') ||
+      r.includes('billing') ||
+      r.includes('insufficient_quota') ||
+      r.includes('resource_exhausted') ||   // Gemini
+      r.includes('token limit') ||
+      r.includes('context length') ||
+      r.includes('context_length_exceeded') // OpenAI
+    ) {
+      return 'Your AI provider has run out of tokens or credits. Check your billing dashboard and top up, then try again.';
+    }
+    // Rate limiting
+    if (
+      r.includes('rate limit') ||
+      r.includes('rate_limit') ||
+      r.includes('too many requests') ||
+      r.includes('429')
+    ) {
+      return 'The AI provider is rate-limiting your requests. Wait a moment, then try again.';
+    }
+    // Authentication / invalid key
+    if (
+      r.includes('invalid api key') ||
+      r.includes('unauthorized') ||
+      r.includes('401') ||
+      r.includes('authentication')
+    ) {
+      return 'The AI provider rejected the request. Check that your API key is correct in LLM Providers.';
+    }
+    return undefined;
+  }
+
   const handleError = useCallback((err: unknown, context?: string): void => {
     setIsBusy(false);
-    const message = err instanceof Error ? err.message : 'Unknown error.';
+    const rawMessage = err instanceof Error ? err.message : 'Unknown error.';
     if (generateAllStepRef.current > 0) {
-      const stepName = STEP_NAMES[generateAllStepRef.current] ?? `Step ${generateAllStepRef.current}`;
       const stepKey = STEP_KEY_MAP[generateAllStepRef.current] ?? '';
+      const stepFriendly = STEP_FRIENDLY[generateAllStepRef.current] ?? `step ${generateAllStepRef.current}`;
       generateAllStepRef.current = 0;
       onChainSettled?.();
       setGenerationProgress('');
-      onGenerateAllFailed?.(stepKey, message);
-      setFeedback(`Generate All stopped at ${stepName}: ${message}`);
+      onGenerateAllFailed?.(stepKey, rawMessage);
+      const knownPattern = detectKnownPattern(rawMessage);
+      setFeedback(knownPattern ?? `Generation stopped during ${stepFriendly}.`);
+      setFeedbackDetail(rawMessage);
     } else {
-      setFeedback(`${context ? `${context}: ` : ''}${message}`);
+      const knownPattern = detectKnownPattern(rawMessage);
+      const friendly = knownPattern ?? FRIENDLY_ERRORS[context ?? ''] ?? 'Something went wrong.';
+      setFeedback(friendly);
+      setFeedbackDetail(rawMessage);
     }
-  }, [setIsBusy, setFeedback, setGenerationProgress, generateAllStepRef, onChainSettled, onGenerateAllFailed]);
+  }, [setIsBusy, setFeedback, setFeedbackDetail, setGenerationProgress, generateAllStepRef, onChainSettled, onGenerateAllFailed]);
 
   // ── Settings ────────────────────────────────────────────────────────────────
 
   const saveSettings = useCallback((): void => {
     // Web version: settings live in React state and are sent with every API call.
     // No server-side save needed. Persist to localStorage for browser-session survival.
+    setFeedbackDetail('');
     try {
       localStorage.setItem('tracelms-settings', JSON.stringify(settingsRef.current));
       setFeedback('Settings saved.');
     } catch {
-      setFeedback('Failed to save settings to local storage.');
+      setFeedback('Could not save settings.');
     }
-  }, [settingsRef, setFeedback]);
+  }, [settingsRef, setFeedback, setFeedbackDetail]);
 
   const testLlm = useCallback((): void => {
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Validating LLM settings...');
     void api.testLlm(settingsRef.current).then(({ ok, message }) => {
       setIsBusy(false);
       setFeedback(`LLM: ${message}`);
       if (ok) setStatus('LLM connected');
     }).catch((err: unknown) => handleError(err, 'LLM test'));
-  }, [settingsRef, setIsBusy, setFeedback, setStatus, handleError]);
+  }, [settingsRef, setIsBusy, setFeedback, setFeedbackDetail, setStatus, handleError]);
 
   // BUG-7 fix: update navbar status dot when Jira test succeeds, same as testLlm.
   const testJira = useCallback((): void => {
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Testing Jira connectivity...');
     void api.testJira(settingsRef.current).then(({ ok, message }) => {
       setIsBusy(false);
       setFeedback(`Jira/Xray: ${message}`);
       if (ok) setStatus('Jira connected');
     }).catch((err: unknown) => handleError(err, 'Jira test'));
-  }, [settingsRef, setIsBusy, setFeedback, setStatus, handleError]);
+  }, [settingsRef, setIsBusy, setFeedback, setFeedbackDetail, setStatus, handleError]);
 
   // ── Files ───────────────────────────────────────────────────────────────────
 
@@ -192,6 +269,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       return;
     }
     setIsBusy(true);
+    setFeedbackDetail('');
     setUploadedRequirements([]);
 
     void (async () => {
@@ -250,7 +328,8 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         setIsBusy(false);
         // Don't overwrite the vision error message if extraction failed and produced nothing
         if (visionFailed && merged.length === 0) {
-          setFeedback(`Image extraction failed: ${visionErrorMsg}`);
+          setFeedback('Image analysis failed. Check that your LLM provider supports vision.');
+          setFeedbackDetail(visionErrorMsg);
         } else {
           setFeedback(`Extracted ${merged.length} requirement(s).`);
         }
@@ -264,19 +343,23 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
 
   const searchStories = useCallback((query: string): void => {
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Searching Jira stories...');
     void api.searchStories(query, settingsRef.current).then(({ stories }) => {
       setIsBusy(false);
       setStoryOptions(stories);
       setFeedback(`Found ${stories.length} stories.`);
     }).catch((err: unknown) => handleError(err, 'Jira search'));
-  }, [settingsRef, setIsBusy, setFeedback, setStoryOptions, handleError]);
+  }, [settingsRef, setIsBusy, setFeedback, setFeedbackDetail, setStoryOptions, handleError]);
 
   const pullFromJira = useCallback((mode: string, payload: Record<string, string>): void => {
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Pulling Jira requirements...');
+    setJiraError('');
     void api.pullFromJira(mode, payload, settingsRef.current).then(({ issues }) => {
       setIsBusy(false);
+      setFeedback('');
       setPulledIssues(issues);
       const mapped: ExtractedRequirement[] = issues.map((issue) => ({
         reqId: issue.key,
@@ -289,9 +372,13 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       }));
       setJiraRequirements(mapped);
       setRequirementsReviewed(false);
-      setFeedback(`Pulled ${issues.length} Jira issue(s) → ${mapped.length} requirement(s).`);
-    }).catch((err: unknown) => handleError(err, 'Jira pull'));
-  }, [settingsRef, setIsBusy, setFeedback, setPulledIssues, setJiraRequirements, setRequirementsReviewed, handleError]);
+    }).catch((err: unknown) => {
+      setIsBusy(false);
+      const rawMessage = err instanceof Error ? err.message : 'Unknown error.';
+      setFeedback('');
+      setJiraError(rawMessage);
+    });
+  }, [settingsRef, setIsBusy, setFeedback, setFeedbackDetail, setJiraError, setPulledIssues, setJiraRequirements, setRequirementsReviewed]);
 
   // ── Generation ──────────────────────────────────────────────────────────────
 
@@ -391,28 +478,32 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const generateEnhancement = useCallback((): void => {
     if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before enhancement.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Generating requirement enhancement...');
     void runEnhancement(requirementTextRef.current).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Enhancement'));
-  }, [requirementTextRef, setIsBusy, setFeedback, setTokenUsage, runEnhancement, handleError]);
+  }, [requirementTextRef, setIsBusy, setFeedback, setFeedbackDetail, setTokenUsage, runEnhancement, handleError]);
 
   const generateScenarios = useCallback((): void => {
     if (!requirementTextRef.current.trim()) { setFeedback('Add requirements text before scenario generation.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Generating scenarios...');
     void runScenarios(requirementTextRef.current, enhancementRef.current).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Scenarios'));
-  }, [requirementTextRef, enhancementRef, setIsBusy, setFeedback, setTokenUsage, runScenarios, handleError]);
+  }, [requirementTextRef, enhancementRef, setIsBusy, setFeedback, setFeedbackDetail, setTokenUsage, runScenarios, handleError]);
 
   const generateTestCases = useCallback((): void => {
     if (!scenariosRef.current.length) { setFeedback('Generate scenarios first.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Generating test cases...');
     void runTestCases(scenariosRef.current).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Test Cases'));
-  }, [scenariosRef, setIsBusy, setFeedback, setTokenUsage, runTestCases, handleError]);
+  }, [scenariosRef, setIsBusy, setFeedback, setFeedbackDetail, setTokenUsage, runTestCases, handleError]);
 
   // BUG-2 fix: dedicated action for the Automation tab that uses current state, never re-runs test cases.
   const generateAutomationAnalysis = useCallback((): void => {
     if (!testCasesRef.current.length) { setFeedback('Generate test cases first.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Analyzing automation candidates...');
     void runAutomation(
       requirementTextRef.current,
@@ -420,7 +511,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       scenariosRef.current,
       testCasesRef.current
     ).then(({ usage }) => { setIsBusy(false); if (usage) setTokenUsage(usage); }).catch((err: unknown) => handleError(err, 'Automation analysis'));
-  }, [testCasesRef, requirementTextRef, enhancementRef, scenariosRef, setIsBusy, setFeedback, setTokenUsage, runAutomation, handleError]);
+  }, [testCasesRef, requirementTextRef, enhancementRef, scenariosRef, setIsBusy, setFeedback, setFeedbackDetail, setTokenUsage, runAutomation, handleError]);
 
   // ── Generate All — DAG-aware parallel execution ──────────────────────────────
   //
@@ -444,6 +535,7 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     }
     localStorage.removeItem('tracelms-session-cleared'); // new generation — allow future restores
     setIsBusy(true);
+    setFeedbackDetail('');
     generateAllStepRef.current = 1;
 
     void (async () => {
@@ -573,13 +665,14 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
         setIsBusy(false);
       }
     })();
-  }, [requirementTextRef, manualTextRef, generateAllStepRef, activeProjectIdRef, uploadedRequirementsRef, setIsBusy, setFeedback, setGenerationProgress, runNfrEnrichment, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, onGenerationSaved, handleError]);
+  }, [requirementTextRef, manualTextRef, generateAllStepRef, activeProjectIdRef, uploadedRequirementsRef, setIsBusy, setFeedback, setFeedbackDetail, setGenerationProgress, runNfrEnrichment, runEnhancement, runScenarios, runTestCases, runAutomation, onChainSettled, onGenerateAllDone, onGenerationSaved, handleError]);
 
   // ── Xray ────────────────────────────────────────────────────────────────────
 
   const pushTestCasesToXray = useCallback((): void => {
     if (!testCasesRef.current.length) { setFeedback('Generate test cases first.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setXrayPushProgress(null);
     setFeedback('Pushing test cases to Xray...');
     const xraySettings = activeProjectJiraKeyRef.current
@@ -606,12 +699,13 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       setXrayPushProgress(null);
       setFeedback(`Xray push complete: ${successCount} succeeded, ${statuses.length - successCount} failed.`);
     }).catch((err: unknown) => handleError(err, 'Xray push'));
-  }, [testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setXrayPushedIssues, setXrayPushProgress, handleError]);
+  }, [testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setFeedbackDetail, setXrayPushedIssues, setXrayPushProgress, handleError]);
 
   const retryFailedPushes = useCallback((): void => {
     const failedIds = xrayPushedIssuesRef.current.filter((i) => !i.success).map((i) => i.localId);
     if (!failedIds.length) { setFeedback('No failed Xray pushes to retry.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setXrayPushProgress(null);
     setFeedback(`Retrying ${failedIds.length} failed push(es)...`);
     const xraySettings = activeProjectJiraKeyRef.current
@@ -633,11 +727,12 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       const successCount = statuses.filter((i) => i.success).length;
       setFeedback(`Retry complete: ${successCount} succeeded.`);
     }).catch((err: unknown) => handleError(err, 'Xray retry'));
-  }, [xrayPushedIssuesRef, testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setXrayPushedIssues, setXrayPushProgress, handleError]);
+  }, [xrayPushedIssuesRef, testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setFeedbackDetail, setXrayPushedIssues, setXrayPushProgress, handleError]);
 
   const previewXrayPush = useCallback((): void => {
     if (!testCasesRef.current.length) { setFeedback('Generate test cases first.'); return; }
     setIsBusy(true);
+    setFeedbackDetail('');
     setFeedback('Previewing Xray push...');
     const xraySettings = activeProjectJiraKeyRef.current
       ? { ...settingsRef.current, jiraProjectKey: activeProjectJiraKeyRef.current }
@@ -648,16 +743,17 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       setXrayPushPreview(p);
       setFeedback(`Preview ready: ${p.willPush} to push, ${p.duplicates} duplicates, ${p.validationErrors} validation errors.`);
     }).catch((err: unknown) => handleError(err, 'Xray preview'));
-  }, [testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setXrayPushPreview, handleError]);
+  }, [testCasesRef, settingsRef, activeProjectJiraKeyRef, setIsBusy, setFeedback, setFeedbackDetail, setXrayPushPreview, handleError]);
 
   const clearXrayHistory = useCallback((): void => {
     setIsBusy(true);
+    setFeedbackDetail('');
     void api.clearXrayHistory().then(({ message }) => {
       setIsBusy(false);
       setXrayPushedIssues([]);
       setFeedback(message);
     }).catch((err: unknown) => handleError(err, 'Clear history'));
-  }, [setIsBusy, setFeedback, setXrayPushedIssues, handleError]);
+  }, [setIsBusy, setFeedback, setFeedbackDetail, setXrayPushedIssues, handleError]);
 
   // BUG-1 fix: actually run the settings restore on mount via useEffect instead of a dead void expression.
   // Also restores the most recent completed generation so the user's last session is immediately available.

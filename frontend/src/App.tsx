@@ -63,6 +63,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const userRole = authUser?.role;
   const [status, setStatus] = useState('Ready');
   const [feedback, setFeedback] = useState('');
+  const [feedbackDetail, setFeedbackDetail] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('requirements');
 
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -72,6 +73,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const [documentWarnings, setDocumentWarnings] = useState<string[]>([]);
 
   const [jiraMode, setJiraMode] = useState<JiraMode>('single');
+  const [jiraError, setJiraError] = useState('');
   const [singleIssueKey, setSingleIssueKey] = useState('');
   const [multipleIssueKeys, setMultipleIssueKeys] = useState('');
   const [epicKey, setEpicKey] = useState('');
@@ -197,13 +199,14 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     generateAllStepRef, requirementTextRef, enhancementRef, scenariosRef,
     settingsRef, testCasesRef, xrayPushedIssuesRef, uploadDraftsRef, uploadedRequirementsRef, manualTextRef,
     activeProjectIdRef, activeProjectJiraKeyRef,
-    setStatus, setFeedback, setIsBusy, setSettings,
+    setStatus, setFeedback, setFeedbackDetail, setIsBusy, setSettings,
     setRequirementText, setRequirementsReviewed,
     setParsedFiles, setDocumentWarnings, setUploadedRequirements, setJiraRequirements,
     setStoryOptions, setPulledIssues,
     setEnhancement, setScenarios, setTestCases,
     setXrayPushedIssues, setAutomation,
     setXrayPushPreview, setXrayPushProgress, setGenerationProgress, setTokenUsage,
+    setJiraError,
     onEnhancementReceived: () => setEnhancementGeneratedAt(new Date()),
     onScenariosReceived: () => setScenariosGeneratedAt(new Date()),
     onChainSettled: () => { /* watchdog is now handled inside the hook */ },
@@ -386,6 +389,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     setTestCases([]);
     setAutomation(null);
     setFeedback('');
+    setFeedbackDetail('');
     setGenerationProgress('');
     setFailedStep(null);
     setFailedMessage('');
@@ -398,6 +402,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     setStoryOptions([]);
     setSelectedStoryKeys([]);
     setJiraRequirements([]);
+    setJiraError('');
     setDocumentWarnings([]);
     setParsedFiles([]);
   }, []);
@@ -890,6 +895,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               isBusy={isBusy}
               isReadOnly={!canWrite(userRole)}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               selectedProvider={settings.llmProvider}
               onInstructionTextChange={setInstructionText}
               onManualTextChange={setManualText}
@@ -905,10 +911,11 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               onRequirementDelete={handleRequirementDelete}
               onJiraRequirementUpdate={handleJiraRequirementUpdate}
               onJiraRequirementDelete={handleJiraRequirementDelete}
-              onJiraModeChange={setJiraMode}
-              onSingleKeyChange={setSingleIssueKey}
-              onMultipleKeysChange={setMultipleIssueKeys}
-              onEpicKeyChange={setEpicKey}
+              jiraError={jiraError}
+              onJiraModeChange={(mode) => { setJiraMode(mode); setJiraError(''); }}
+              onSingleKeyChange={(key) => { setSingleIssueKey(key); setJiraError(''); }}
+              onMultipleKeysChange={(keys) => { setMultipleIssueKeys(keys); setJiraError(''); }}
+              onEpicKeyChange={(key) => { setEpicKey(key); setJiraError(''); }}
               onStoryQueryChange={setStoryQuery}
               onSearchStories={searchStories}
               onToggleStoryKey={toggleStoryKey}
@@ -923,6 +930,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               enhancement={enhancement}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               generatedAt={enhancementGeneratedAt}
               onGenerate={generateEnhancement}
               onUpdateItem={updateEnhancementItem}
@@ -937,6 +945,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               scenarios={scenarios}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               generatedAt={scenariosGeneratedAt}
               onGenerate={generateScenarios}
               onUpdateField={updateScenarioField}
@@ -955,6 +964,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               xrayPushedIssues={xrayPushedIssues}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               generationId={lastSavedGenerationId}
               onTestCasesChange={setTestCases}
               onGenerateTestCases={generateTestCases}
@@ -972,6 +982,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               automation={automation}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               onAnalyze={analyzeAutomation}
               onExportJson={exportAutomationJson}
               onExportCsv={exportAutomationCsv}
@@ -1026,6 +1037,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               availableModels={availableModels}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               onFieldChange={updateSettingsField}
               onSave={saveSettings}
               onTestLlm={testLlm}
