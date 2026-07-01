@@ -331,18 +331,30 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
       {showCreate && (
         <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Create project">
           <div className="proj-modal">
-            <h3>New Project</h3>
-            <div className="field-row">
+            <div className="proj-modal-header">
+              <h3>New Project</h3>
+              <button
+                type="button"
+                className="proj-modal-close"
+                onClick={() => { setShowCreate(false); setCreateError(''); }}
+                aria-label="Close"
+              >
+                <i className="ti ti-x" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="field-stack">
               <label htmlFor="proj-name">Project Name</label>
               <input id="proj-name" type="text" value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="My QA Project" autoFocus />
             </div>
-            <div className="field-row">
-              <label htmlFor="proj-key">Project Key <span className="helper-text">(short unique code, e.g. PROJ)</span></label>
+            <div className="field-stack">
+              <label htmlFor="proj-key">Project Key</label>
               <input id="proj-key" type="text" value={createKey} onChange={(e) => setCreateKey(e.target.value.toUpperCase())} placeholder="PROJ" maxLength={10} />
+              <span className="helper-text">Short unique code, e.g. PROJ</span>
             </div>
-            <div className="field-row">
-              <label htmlFor="proj-desc">Description <span className="helper-text">(optional)</span></label>
+            <div className="field-stack">
+              <label htmlFor="proj-desc">Description</label>
               <textarea id="proj-desc" rows={4} value={createDesc} onChange={(e) => setCreateDesc(e.target.value)} placeholder="Describe the scope, goals, or context of this project" className="proj-desc-textarea" />
+              <span className="helper-text">Optional</span>
             </div>
             {createError && <p className="feedback feedback--error">{createError}</p>}
             <div className="button-row">

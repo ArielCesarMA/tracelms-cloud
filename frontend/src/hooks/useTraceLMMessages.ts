@@ -409,7 +409,14 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
   const generateAll = useCallback((): void => {
     // Fall back to raw manual text when no structured payload has been built yet
     const requirements = requirementTextRef.current.trim() || manualTextRef.current.trim();
-    if (!requirements) { setFeedback('Add requirements text before generation.'); return; }
+    if (!requirements) {
+      const hasPendingDrafts = uploadDraftsRef.current.some((d) => !d.sizeError);
+      setFeedback(hasPendingDrafts
+        ? 'Click \'Extract Requirements\' first to process your uploaded files before generating.'
+        : 'Add requirements text before generation.');
+      return;
+    }
+    localStorage.removeItem('tracelms-session-cleared'); // new generation — allow future restores
     setIsBusy(true);
     generateAllStepRef.current = 1;
 
@@ -625,8 +632,10 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
     }
 
     // Generation restore (async — must not block settings restore)
+    // Skip if the user explicitly cleared the session — respect their intent until a new generation runs.
     void (async () => {
       try {
+        if (localStorage.getItem('tracelms-session-cleared') === 'true') return;
         const { generation } = await api.fetchLatestGeneration();
         if (!generation) return;
 

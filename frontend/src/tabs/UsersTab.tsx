@@ -317,7 +317,17 @@ export function UsersTab({ currentUserId, currentUserRole }: UsersTabProps): JSX
       {showInvite && (
         <div className="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Invite team member">
           <div className="proj-modal users-invite-modal">
-            <h3>Invite Team Member</h3>
+            <div className="proj-modal-header">
+              <h3>Invite Team Member</h3>
+              <button
+                type="button"
+                className="proj-modal-close"
+                onClick={closeInviteModal}
+                aria-label="Close"
+              >
+                <i className="ti ti-x" aria-hidden="true" />
+              </button>
+            </div>
 
             <div className="field-stack">
               <label className="invite-label" htmlFor="invite-email">Email address</label>

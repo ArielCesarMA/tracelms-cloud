@@ -189,6 +189,13 @@ function extractJson(text: string): unknown {
 
 const AUTOMATION_BATCH_SIZE = 15;
 
+// Test case generation batches scenarios to stay within output token limits.
+// Each batch of TESTCASE_BATCH_SIZE scenarios generates its own JSON array of
+// test cases, then results are merged. Without batching, 18+ scenarios in one
+// call exceed the 8192-token output cap on fast models (Groq, Haiku) and the
+// LLM produces exactly 1 test case per scenario before the stream is truncated.
+const TESTCASE_BATCH_SIZE = 6;
+
 interface AutomationItem {
   testCaseId: string;
   scenarioId: string;
@@ -588,13 +595,30 @@ generateRouter.post('/testcases/stream', wrap(async (req: Request, res: Response
   try {
     sse.send({ type: 'started' });
     const systemPrompt = await getActivePrompt(PromptStep.TEST_CASES, projectId);
-    let chars = 0;
-    const { text, usage } = await callLLMStream(settings, systemPrompt, `Scenarios:\n${JSON.stringify(scenarios, null, 2)}`, (chunk) => {
-      chars += chunk.length;
-      sse.send({ type: 'chunk', text: chunk, chars });
-    }, () => sse.send({ type: 'model-info', isReasoning: true }));
-    const testCases = extractJson(text);
-    sse.send({ type: 'done', result: { testCases }, usage });
+    const batches = chunkArray(scenarios, TESTCASE_BATCH_SIZE);
+    console.log(`[testcases/stream] ${scenarios.length} scenarios → ${batches.length} batch(es) of ≤${TESTCASE_BATCH_SIZE}`);
+
+    let totalChars = 0;
+    let totalUsage: TokenUsage | undefined;
+    const batchResults = await Promise.all(
+      batches.map(async (batch, idx) => {
+        sse.send({ type: 'batch', current: idx + 1, total: batches.length });
+        const batchNote = batches.length > 1
+          ? `\n\n[Batch ${idx + 1} of ${batches.length} — generate test cases only for the scenarios below; other batches will be merged]`
+          : '';
+        const userPrompt = `Scenarios:\n${JSON.stringify(batch, null, 2)}${batchNote}`;
+        const { text, usage } = await callLLMStream(settings, systemPrompt, userPrompt, (chunk) => {
+          totalChars += chunk.length;
+          sse.send({ type: 'chunk', text: chunk, chars: totalChars });
+        }, idx === 0 ? () => sse.send({ type: 'model-info', isReasoning: true }) : undefined);
+        totalUsage = mergeUsage(totalUsage, usage);
+        return extractJson(text) as unknown[];
+      })
+    );
+
+    const testCases = batchResults.flat();
+    console.log(`[testcases/stream] merged ${testCases.length} test cases from ${batches.length} batch(es)`);
+    sse.send({ type: 'done', result: { testCases }, usage: totalUsage });
   } catch (err) {
     sse.send({ type: 'error', message: err instanceof Error ? err.message : 'Failed to generate test cases.' });
   } finally {

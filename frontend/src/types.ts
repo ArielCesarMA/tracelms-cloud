@@ -365,7 +365,7 @@ export const llmModelsByProvider: Record<string, string[]> = {
   Anthropic: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
   Gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.1-pro'],
   Groq: [
-    'llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-scout-17b-16e-instruct',
     'llama-3.3-70b-specdec',
     'llama3-70b-8192',
     'mixtral-8x7b-32768',
@@ -395,7 +395,7 @@ export const modelMeta: Record<string, ModelMeta> = {
   'gemini-2.5-flash':                   { tier: 'fast',         isReasoningModel: false },
   'gemini-2.5-pro':                     { tier: 'balanced',     isReasoningModel: false },
   'gemini-3.1-pro':                     { tier: 'best-quality', isReasoningModel: true  },
-  'llama-4-scout-17b-16e-instruct':     { tier: 'fast',         isReasoningModel: false },
+  'meta-llama/llama-4-scout-17b-16e-instruct': { tier: 'fast',  isReasoningModel: false },
   'llama-3.3-70b-specdec':              { tier: 'balanced',     isReasoningModel: false },
   'llama3-70b-8192':                    { tier: 'balanced',     isReasoningModel: false },
   'mixtral-8x7b-32768':                 { tier: 'economy',      isReasoningModel: false },

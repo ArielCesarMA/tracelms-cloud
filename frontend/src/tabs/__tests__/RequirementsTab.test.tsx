@@ -127,20 +127,28 @@ describe('RequirementsTab', () => {
     expect(screen.getByText('screenshot.png')).toBeTruthy();
   });
 
-  it('shows vision warning when Groq is selected and images are staged', () => {
+  it('does not show vision warning when Groq is selected and images are staged', () => {
     render(<RequirementsTab
       {...baseProps}
       selectedProvider="Groq"
       uploadDrafts={[{ name: 'req.png', mimeType: 'image/png', contentBase64: '', isImage: true }]}
     />);
-    expect(screen.getByRole('alert')).toBeTruthy();
-    expect(screen.getByText(/does not support image analysis/i)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('does not show vision warning when OpenAI is selected with images staged', () => {
     render(<RequirementsTab
       {...baseProps}
       selectedProvider="OpenAI"
+      uploadDrafts={[{ name: 'req.png', mimeType: 'image/png', contentBase64: '', isImage: true }]}
+    />);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not show vision warning when Gemini is selected with images staged', () => {
+    render(<RequirementsTab
+      {...baseProps}
+      selectedProvider="Gemini"
       uploadDrafts={[{ name: 'req.png', mimeType: 'image/png', contentBase64: '', isImage: true }]}
     />);
     expect(screen.queryByRole('alert')).toBeNull();

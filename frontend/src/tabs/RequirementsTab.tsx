@@ -120,7 +120,24 @@ export const RequirementsTab = memo(function RequirementsTab({
     ? 'Re-extract'
     : 'Extract Requirements';
 
-  const hasAnyRequirements = uploadedRequirements.length > 0 || jiraRequirements.length > 0 || manualText.trim().length > 0;
+  const hasValidDrafts = uploadDrafts.some((d) => !d.sizeError);
+  const hasAnyRequirements = uploadedRequirements.length > 0 || jiraRequirements.length > 0 || manualText.trim().length > 0 || hasValidDrafts;
+
+  // showReviewGate: only true when there is reviewable content (extracted rows or typed text).
+  // Staged-only file drafts are not reviewable until extracted — hide the gate in that state.
+  const showReviewGate = uploadedRequirements.length > 0 || jiraRequirements.length > 0 || manualText.trim().length > 0;
+  // pendingExtractOnly: files staged but nothing yet reviewable — Generate must be blocked.
+  const pendingExtractOnly = hasValidDrafts && !showReviewGate;
+
+  // Nudge: highlight the logical next-step button when its precondition is freshly met.
+  // Only one button nudges at a time; nudge stops once the step is complete.
+  const nudgeExtract = !isBusy && hasValidDrafts && uploadedRequirements.length === 0;
+  const nudgeJira    = !isBusy && (
+    (jiraMode === 'single'      && singleIssueKey.trim().length > 0) ||
+    (jiraMode === 'multiple'    && multipleIssueKeys.trim().length > 0) ||
+    (jiraMode === 'epic'        && epicKey.trim().length > 0) ||
+    (jiraMode === 'multiStory'  && selectedStoryKeys.length > 0)
+  ) && jiraRequirements.length === 0;
 
   return (
     <section className="panel">
@@ -130,7 +147,12 @@ export const RequirementsTab = memo(function RequirementsTab({
         <div className="requirements-page-title">
           <h2>Requirements</h2>
           <p className="helper-text">
-            Load requirements from files or Jira, review and edit the extracted table, then generate all artifacts.
+            <i className="ti ti-file-upload req-helper-icon" aria-hidden="true" />
+            <strong className="req-helper-keyword">Load</strong> requirements from files or Jira,{' '}
+            <i className="ti ti-table req-helper-icon" aria-hidden="true" />
+            <strong className="req-helper-keyword">review and edit</strong> the extracted table, then{' '}
+            <i className="ti ti-bolt req-helper-icon" aria-hidden="true" />
+            <strong className="req-helper-keyword">generate</strong> all artifacts.
           </p>
         </div>
 
@@ -153,7 +175,7 @@ export const RequirementsTab = memo(function RequirementsTab({
               className="req-clear-btn"
               onClick={handleClearRequest}
               disabled={isBusy}
-              title="Discard all requirements and generated artifacts"
+              title="Clear all generated artifacts — requirements are kept so you can re-generate"
             >
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                 <path d="M1 3.5h12M5 3.5V2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v1M12 3.5l-.9 8.1a1 1 0 0 1-1 .9H3.9a1 1 0 0 1-1-.9L2 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -161,15 +183,6 @@ export const RequirementsTab = memo(function RequirementsTab({
               Clear All
             </button>
           )}
-
-          <button type="button" className="req-save-btn" disabled title="Save to a project — coming soon">
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M11.5 12.5h-9a1 1 0 0 1-1-1v-9l2-2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M4.5 12.5v-4h5v4M4.5 1.5v3h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Save &amp; New
-            <span className="req-save-badge">Soon</span>
-          </button>
         </div>
       </div>
 
@@ -335,12 +348,17 @@ export const RequirementsTab = memo(function RequirementsTab({
           <button
             type="button"
             data-variant="secondary"
-            className="req-extract-btn"
+            className={`req-extract-btn${nudgeExtract ? ' req-extract-btn--nudge' : ''}`}
             onClick={onParseFiles}
             disabled={isBusy || !hasUploadInput}
           >
             {extractLabel}
           </button>
+          {nudgeExtract && (
+            <span className="req-next-step-hint" aria-live="polite">
+              ← Next step
+            </span>
+          )}
           {isBusy && (feedback.startsWith('Parsing') || feedback.startsWith('Extracting')) && (
             <span className="req-extract-progress">{feedback}</span>
           )}
@@ -416,9 +434,20 @@ export const RequirementsTab = memo(function RequirementsTab({
         )}
 
         <div className="button-row" style={{ marginTop: 'var(--space-3)' }}>
-          <button type="button" data-variant="secondary" onClick={onPullJira} disabled={isBusy}>
+          <button
+            type="button"
+            data-variant="secondary"
+            className={nudgeJira ? 'req-pull-jira-btn--nudge' : undefined}
+            onClick={onPullJira}
+            disabled={isBusy}
+          >
             Pull Jira Requirements
           </button>
+          {nudgeJira && (
+            <span className="req-next-step-hint" aria-live="polite">
+              ← Next step
+            </span>
+          )}
         </div>
 
         {jiraRequirements.length > 0 && (
@@ -475,27 +504,31 @@ export const RequirementsTab = memo(function RequirementsTab({
 
         {/* CTA row — review gate + generate */}
         <div className="req-cta-zone">
-          <label
-            className={`req-review-gate${requirementsReviewed ? ' req-review-gate--checked' : ''}`}
-            title="Confirm your requirements are complete before generating"
-          >
-            <input
-              type="checkbox"
-              checked={requirementsReviewed}
-              onChange={(e) => onReviewedChange(e.target.checked)}
-              disabled={isBusy}
-            />
-            <span>Requirements reviewed and ready</span>
-          </label>
+          {showReviewGate && (
+            <label
+              className={`req-review-gate${requirementsReviewed ? ' req-review-gate--checked' : ''}`}
+              title="Confirm your requirements are complete before generating"
+            >
+              <input
+                type="checkbox"
+                checked={requirementsReviewed}
+                onChange={(e) => onReviewedChange(e.target.checked)}
+                disabled={isBusy}
+              />
+              <span>Requirements reviewed and ready</span>
+            </label>
+          )}
 
           <button
             type="button"
             onClick={onGenerateAll}
-            disabled={isBusy || !hasAnyRequirements}
+            disabled={isBusy || !hasAnyRequirements || pendingExtractOnly}
             className={`req-generate-btn${requirementsReviewed ? ' req-generate-btn--ready' : ''}`}
             title={
               !hasAnyRequirements
                 ? 'Paste or upload requirements first'
+                : pendingExtractOnly
+                ? 'Click \'Extract Requirements\' first to process your uploaded files'
                 : requirementsReviewed
                 ? 'Generate all artifacts'
                 : 'Check the box to confirm your requirements are ready'

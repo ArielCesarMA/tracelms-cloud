@@ -142,6 +142,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const manualTextRef = useRef(manualText);
   const activeProjectIdRef = useRef(activeProjectId);
   const activeProjectJiraKeyRef = useRef(activeProjectJiraKey);
+  const autoGenerateAfterExtractRef = useRef(false);
 
   useEffect(() => { requirementTextRef.current = requirementText; }, [requirementText]);
   useEffect(() => { enhancementRef.current = enhancement; }, [enhancement]);
@@ -166,6 +167,15 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     const payload = buildRequirementsPayload(uploadedRequirements, jiraRequirements, instructionText);
     setRequirementText(payload);
     requirementTextRef.current = payload;
+    // If the user clicked Generate All before extraction was done, continue now.
+    // generateAll is intentionally excluded from deps — it's a stable useCallback and
+    // only invoked here via the autoGenerateAfterExtractRef flag, not as a re-run trigger.
+    if (autoGenerateAfterExtractRef.current) {
+      autoGenerateAfterExtractRef.current = false;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      generateAll();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadedRequirements, jiraRequirements, instructionText]);
 
   const availableModels = useMemo(() => getProviderModels(settings.llmProvider), [settings.llmProvider]);
@@ -328,21 +338,33 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
   // ── Generation guards ─────────────────────────────────────────────────────
 
+  // When files are dropped but not yet extracted, auto-extract first then generate.
+  const handleGenerateAll = useCallback((): void => {
+    const hasText = requirementTextRef.current.trim() || manualTextRef.current.trim();
+    if (!hasText) {
+      const pendingDrafts = uploadDraftsRef.current.filter((d) => !d.sizeError);
+      if (pendingDrafts.length > 0) {
+        autoGenerateAfterExtractRef.current = true;
+        setFeedback('Extracting requirements from your files first…');
+        parseSelectedFiles();
+        return;
+      }
+    }
+    generateAll();
+  }, [generateAll, parseSelectedFiles, setFeedback]);
+
   const handleRequirementTextChange = useCallback((text: string): void => {
     setRequirementText(text);
     setRequirementsReviewed(false);
   }, []);
 
   const clearAll = useCallback((): void => {
-    setRequirementText('');
-    setRequirementsReviewed(false);
+    localStorage.setItem('tracelms-session-cleared', 'true');
+    setIsBusy(false);
+    // Keep requirements intact so the user can re-generate immediately.
+    // Only clear the generated artifacts and staged file queue.
     setUploadDrafts([]);
-    setParsedFiles([]);
-    setDocumentWarnings([]);
-    setUploadedRequirements([]);
-    setJiraRequirements([]);
-    setInstructionText('');
-    setManualText('');
+    setRequirementsReviewed(false);
     setEnhancement(emptyEnhancement);
     setEnhancementGeneratedAt(null);
     setScenarios([]);
@@ -515,6 +537,10 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     : status.toLowerCase().includes('ready') || status.toLowerCase().includes('saved') || status.toLowerCase().includes('ok')
     ? 'sidebar-status-dot sidebar-status-dot--ready'
     : 'sidebar-status-dot';
+
+  // Idle "ready" messages carry no information once shown — keep the dot as an
+  // ambient signal but only surface the text label for busy/error/transient states.
+  const isIdleStatus = !isBusy && status.toLowerCase().includes('ready');
 
   const nav = (key: TabKey): void => setActiveTab(key);
 
@@ -724,13 +750,6 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
         {/* Footer — status + logout */}
         <div className="sidebar-footer" role="status" aria-live="polite">
-          {/* Status row */}
-          <div className="sidebar-footer-status">
-            <span className={statusDotClass} aria-hidden="true" />
-            <span className="sidebar-status-text">{status}</span>
-            <span className="sidebar-version">v0.1.0</span>
-          </div>
-
           {activeProjectName && (
             <div className="sidebar-active-project" title={`Active project: ${activeProjectName}`}>
               <i className="ti ti-folder-filled" aria-hidden="true" />
@@ -738,11 +757,16 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
             </div>
           )}
 
-          {/* User identity block — avatar + email + role + sign out */}
+          {/* User identity block — avatar (+ presence dot) + email + role + sign out */}
           {authUser && (
             <div className="sidebar-identity">
-              <div className="sidebar-identity-avatar" aria-hidden="true">
-                {authUser.email.charAt(0).toUpperCase()}
+              <div className="sidebar-identity-avatar-wrap">
+                <div className="sidebar-identity-avatar" aria-hidden="true">
+                  {authUser.email.charAt(0).toUpperCase()}
+                </div>
+                {!isIdleStatus && (
+                  <span className={statusDotClass} aria-hidden="false" role="status" title={status} />
+                )}
               </div>
               <div className="sidebar-identity-info">
                 <span className="sidebar-identity-email" title={authUser.email}>
@@ -839,7 +863,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               onInstructionTextChange={setInstructionText}
               onManualTextChange={setManualText}
               onReviewedChange={setRequirementsReviewed}
-              onGenerateAll={generateAll}
+              onGenerateAll={handleGenerateAll}
               onClearAll={clearAll}
               onFileChange={handleFileChange}
               onParseFiles={parseSelectedFiles}

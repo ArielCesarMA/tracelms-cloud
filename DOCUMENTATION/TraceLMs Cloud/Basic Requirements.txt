@@ -54,3 +54,29 @@ In the Requirements section, can inspect and do the following:
  3. The "Free Text Input", "File Upload Parsing" and "Pull from Jira" sections, can these have a separator or maybe put in a box just like in the Integrations just to emphasize that these 3 are having different functions
 
 
+better LLM  
+storage for created artifacts
+Test Plan and Test Strategy creation  x
+Script Creation  x
+Gherkin View
+
+==========================
+
+GaneshRaghavan.86@gmail.com
+OR&Y2VH#1&6iSAzj
+
+
+jackydas0702@gmail.com
+wN8akpcSH!E$7#yO
+
+mbautistajr@gmail.com
+21zF1Un3JLhl@Ahy
+
+suchi.rh@gmail.com
+i9St!Q*^A9i@#JV5
+
+Ansvijay@gmail.com
+mwO3opqr57W2^YOt
+
+
+Project>Set as Active after clicking the Proj box

@@ -330,6 +330,62 @@ export class GeminiProvider implements LLMProvider {
     }
   }
 
+  public async completeVision(imageBase64: string, mimeType: string, systemPrompt: string): Promise<LLMResponse> {
+    if (!this.apiKey) throw new Error('Gemini API key is missing.');
+
+    const model = 'gemini-2.5-flash';
+    const body: Record<string, unknown> = {
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType, data: imageBase64 } },
+          { text: 'Analyze this image and extract software requirements as instructed.' },
+        ],
+      }],
+      generationConfig: { temperature: 0.2 },
+    };
+    if (systemPrompt) {
+      body.systemInstruction = { parts: [{ text: systemPrompt }] };
+    }
+
+    const endpoints = this.getEndpointCandidates(model);
+    for (const endpoint of endpoints) {
+      let response: Response;
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        throw new Error(`Gemini vision request failed: ${(err as Error).message}`);
+      }
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+        };
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const m = data.usageMetadata;
+        const usage: TokenUsage | undefined = m
+          ? { promptTokens: m.promptTokenCount ?? 0, completionTokens: m.candidatesTokenCount ?? 0, totalTokens: m.totalTokenCount ?? 0 }
+          : undefined;
+        console.log(`[generate/vision] Gemini vision complete — model=${model} chars=${text.length}`);
+        return { text, usage };
+      }
+
+      if (response.status === 404) continue;
+
+      const detail = await this.parseErrorDetail(response);
+      throw new Error(
+        `Gemini vision request failed with status ${response.status}${detail ? `: ${detail}` : '.'}`
+      );
+    }
+
+    throw new Error(`Gemini vision request failed: model '${model}' unavailable on all endpoints.`);
+  }
+
   public async stream(request: LLMRequest, onChunk: StreamChunkHandler): Promise<LLMResponse> {
     if (!this.apiKey) throw new Error('Gemini API key is missing.');
 

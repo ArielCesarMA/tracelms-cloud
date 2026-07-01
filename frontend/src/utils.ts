@@ -5,8 +5,8 @@ import { type ScenarioType, type ExtractedRequirement } from './types';
 export const VISION_CAPABLE_PROVIDERS: Record<string, boolean> = {
   openai: true,
   anthropic: true,
-  google: true,
-  groq: false,
+  gemini: true,
+  groq: true,
 };
 
 export const IMAGE_SIZE_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MB

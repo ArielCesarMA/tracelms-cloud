@@ -127,13 +127,13 @@ export const MODEL_REGISTRY: Record<string, ModelCapabilities> = {
   // TODO: add gemini-3.5-flash — confirm exact API ID (may include version suffix e.g. -001)
 
   // ── Groq ───────────────────────────────────────────────────────────────────
-  'llama-4-scout-17b-16e-instruct': {
+  'meta-llama/llama-4-scout-17b-16e-instruct': {
     tps: 300,
     maxOutputTokens: 8192,
     isReasoningModel: false,
     supportsSystemInstruction: true,
     tier: 'fast',
-    contextWindowK: 128,
+    contextWindowK: 10000,
   },
   'llama-3.3-70b-specdec': {
     tps: 250,

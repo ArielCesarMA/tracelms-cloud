@@ -68,6 +68,66 @@ export class GroqProvider implements LLMProvider {
     return { text, usage };
   }
 
+  public async completeVision(imageBase64: string, mimeType: string, systemPrompt: string): Promise<LLMResponse> {
+    if (!this.apiKey) throw new Error('Groq API key is missing.');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+
+    let response: Response;
+    try {
+      response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+          temperature: 0.2,
+          messages: [
+            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                { type: 'text', text: 'Analyze this image and extract software requirements as instructed.' },
+              ],
+            },
+          ],
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        throw new Error('Groq vision request timed out after 60 seconds.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      const detail = await response.json().then(
+        (d: unknown) => (d as { error?: { message?: string } }).error?.message ?? '',
+        () => ''
+      );
+      throw new Error(`Groq vision request failed with status ${response.status}${detail ? `: ${detail}` : '.'}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    };
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const u = data.usage;
+    const usage = u
+      ? { promptTokens: u.prompt_tokens ?? 0, completionTokens: u.completion_tokens ?? 0, totalTokens: u.total_tokens ?? 0 }
+      : undefined;
+    console.log(`[generate/vision] Groq vision complete — model=meta-llama/llama-4-scout-17b-16e-instruct chars=${text.length}`);
+    return { text, usage };
+  }
+
   public async stream(request: LLMRequest, onChunk: StreamChunkHandler): Promise<LLMResponse> {
     if (!this.apiKey) throw new Error('Groq API key is missing.');
 

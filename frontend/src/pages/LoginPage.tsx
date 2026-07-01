@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, FormEvent } from 'react';
 import { login, setAuthToken, getPublicStats, type PublicTestimonial } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LoginPageProps {
   onAuthenticated: () => void;
@@ -31,6 +32,7 @@ const XraySVG = () => (
 );
 
 export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
+  const { refetch } = useAuth();
   const [email, setEmail]             = useState('');
   const [password, setPassword]       = useState('');
   const [error, setError]             = useState('');
@@ -54,6 +56,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
     try {
       const { token } = await login(email.trim(), password);
       setAuthToken(token);
+      await refetch(); // populate AuthContext with user data (role, id) before AppInner mounts
       onAuthenticated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Check your credentials and try again.');
@@ -131,8 +134,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
           ))}
         </div>
 
-        {/* Usage counter — only renders when there is real data */}
-        {generationsCount > 0 && (
+        {/* Usage counter — only renders when volume is meaningful enough for social proof */}
+        {generationsCount >= 100 && (
           <div className="login-stat">
             <i className="ti ti-chart-bar" aria-hidden="true" />
             <span>{generationsCount.toLocaleString()} test cases generated</span>

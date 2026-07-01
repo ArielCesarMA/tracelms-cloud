@@ -51,7 +51,7 @@ const BUILT_IN_PROVIDERS = [
     authHeader: 'Bearer',
     compatibility: 'openai',
     models: [
-      { modelId: 'llama-4-scout-17b-16e-instruct', displayLabel: 'Llama 4 Scout 17B', isDefault: true },
+      { modelId: 'meta-llama/llama-4-scout-17b-16e-instruct', displayLabel: 'Llama 4 Scout 17B', isDefault: true },
       { modelId: 'llama-3.3-70b-specdec', displayLabel: 'Llama 3.3 70B SpecDec', isDefault: false },
       { modelId: 'llama3-70b-8192', displayLabel: 'Llama 3 70B', isDefault: false },
       { modelId: 'mixtral-8x7b-32768', displayLabel: 'Mixtral 8x7B', isDefault: false },
