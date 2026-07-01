@@ -61,6 +61,7 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editJiraKey, setEditJiraKey] = useState('');
+  const [editStatus, setEditStatus] = useState<string>('ACTIVE');
   const [editBusy, setEditBusy] = useState(false);
 
   // Approval chain state
@@ -209,6 +210,7 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
     setEditName(p.name);
     setEditDesc(p.description);
     setEditJiraKey(p.jiraProjectKey ?? '');
+    setEditStatus(p.status);
   };
 
   const handleEdit = async () => {
@@ -219,6 +221,7 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
         name: editName.trim(),
         description: editDesc.trim(),
         jiraProjectKey: editJiraKey.trim() || undefined,
+        status: editStatus as 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED',
       });
       const updated = project as Project;
       setProjects((prev) => prev.map((p) => p.id === editId ? updated : p));
@@ -490,6 +493,18 @@ export const ProjectsTab = memo(function ProjectsTab({ activeProjectId, onProjec
                       value={editJiraKey}
                       onChange={(e) => setEditJiraKey(e.target.value.toUpperCase())}
                     />
+                  </div>
+                  <div className="field-row">
+                    <label htmlFor="editStatus">Status</label>
+                    <select
+                      id="editStatus"
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                    >
+                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="button-row">
                     <button type="button" onClick={handleEdit} disabled={editBusy}>{editBusy ? 'Saving…' : 'Save'}</button>
