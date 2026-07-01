@@ -90,13 +90,28 @@ export const RequirementsTab = memo(function RequirementsTab({
   const handleClearCancel  = useCallback(() => setConfirmingClear(false), []);
   const handleClearConfirm = useCallback(() => { setConfirmingClear(false); onClearAll(); }, [onClearAll]);
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   }, []);
 
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when leaving the drop zone entirely, not when moving over child elements
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    setIsDragOver(false);
     const validExts = ACCEPTED_EXTS.split(',');
     const files = Array.from(e.dataTransfer.files).filter((f) => {
       const ext = `.${f.name.split('.').pop()?.toLowerCase() ?? ''}`;
@@ -217,7 +232,10 @@ export const RequirementsTab = memo(function RequirementsTab({
           ref={dropRef}
           className="req-dropzone"
           onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          data-drag-over={isDragOver || undefined}
           aria-label="Drop files here or use the file picker"
         >
           <div className="req-dropzone-inner">
