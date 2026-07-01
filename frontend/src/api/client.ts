@@ -348,7 +348,7 @@ export async function streamExtractRequirements(
   try {
     res = await fetch(`${BASE}/generate/extract-requirements/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ rawText, settings }),
     });
   } catch (err) {
@@ -359,6 +359,7 @@ export async function streamExtractRequirements(
     const text = await res.text().catch(() => '');
     let errMsg: string | undefined;
     try { errMsg = (JSON.parse(text) as { error?: string }).error; } catch { /* ignore */ }
+    if (res.status === 401) { clearAuthToken(); window.location.reload(); throw new Error('Session expired. Please sign in again.'); }
     throw new Error(errMsg ?? `Request failed (${res.status}): extract-requirements/stream`);
   }
 
