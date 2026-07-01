@@ -438,8 +438,7 @@ export const RequirementsTab = memo(function RequirementsTab({
         <div className="button-row" style={{ marginTop: 'var(--space-3)' }}>
           <button
             type="button"
-            data-variant="secondary"
-            className={nudgeJira ? 'req-pull-jira-btn--nudge' : undefined}
+            className={`req-extract-btn${nudgeJira ? ' req-pull-jira-btn--nudge' : ''}`}
             onClick={onPullJira}
             disabled={isBusy}
           >
