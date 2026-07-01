@@ -29,7 +29,7 @@ EXTRACTION RULES:
 
 CLASSIFICATION RULES — requirementType:
 - Functional: what the system does — features, behaviors, actions, workflows
-- Non-Functional: performance, scalability, availability, reliability, observability
+- Non-Functional: any quality attribute that constrains HOW the system behaves rather than WHAT it does — includes: response time / latency (e.g. "the page shall load within 2 seconds"), throughput (requests per second, transactions per minute), scalability (horizontal/vertical scaling, concurrent user limits), availability and uptime (SLA targets, 99.9% uptime, zero-downtime deployments), reliability (fault tolerance, MTBF, MTTR, retry logic), recoverability (disaster recovery, RTO/RPO, backup restore), capacity (storage limits, data volume, bandwidth), maintainability (logging, monitoring, alerting, health checks, versioning), observability (audit trails, telemetry, distributed tracing), portability (multi-device, cross-browser, platform independence), internationalization and localization (language support, regional formats, RTL layout), testability (test coverage requirements, sandbox/mock environments), and supportability (diagnostics, admin tools, configuration management)
 - Business Rule: policies, approval workflows, eligibility rules, role-based permissions
 - Validation: input/output validation, format checks, constraints, duplicate prevention
 - Security: authentication, authorization, RBAC, encryption, audit logs, MFA, rate limiting
