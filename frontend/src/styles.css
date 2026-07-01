@@ -3560,6 +3560,20 @@ button[data-variant="danger"]:hover:not(:disabled),
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sidebar-no-project {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  padding: var(--space-1) 0;
+}
+.sidebar-no-project-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Danger button variant */
 button[data-variant="danger"] {

@@ -188,21 +188,6 @@ export const RequirementsTab = memo(function RequirementsTab({
 
       <StepStepper activeStep={activeStep} secondActiveStep={secondActiveStep} />
 
-      {/* ── Active project context indicator ─────────────────────────────────── */}
-      {activeProjectId ? (
-        <div className="req-project-indicator req-project-indicator--active" role="status">
-          <i className="ti ti-folder-filled" aria-hidden="true" />
-          <span>Active project: <strong>{activeProjectName}</strong> — generated artifacts will be saved here automatically.</span>
-        </div>
-      ) : (
-        <div className="req-project-indicator req-project-indicator--warn" role="status">
-          <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <span>No active project — generated artifacts won&apos;t be auto-saved.{' '}
-            <button className="link-btn" onClick={onGoToProjects}>Set an active project →</button>
-          </span>
-        </div>
-      )}
-
       {/* ── Section 1: File Upload with Extraction ─────────────────────────── */}
       <div className="req-source-box">
         <div className="req-source-header">
@@ -501,6 +486,16 @@ export const RequirementsTab = memo(function RequirementsTab({
             />
           )}
         </div>
+
+        {/* ── No active project gate — adjacent to the action it guards ─────── */}
+        {!activeProjectId && (
+          <div className="req-project-indicator req-project-indicator--warn" role="status">
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <span>No active project — artifacts won&apos;t be auto-saved.{' '}
+              <button className="link-btn" onClick={onGoToProjects}>Set an active project →</button>
+            </span>
+          </div>
+        )}
 
         {/* CTA row — review gate + generate */}
         <div className="req-cta-zone">

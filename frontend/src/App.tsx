@@ -750,10 +750,15 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
 
         {/* Footer — status + logout */}
         <div className="sidebar-footer" role="status" aria-live="polite">
-          {activeProjectName && (
+          {activeProjectName ? (
             <div className="sidebar-active-project" title={`Active project: ${activeProjectName}`}>
               <i className="ti ti-folder-filled" aria-hidden="true" />
               <span className="sidebar-active-project-name">{activeProjectName}</span>
+            </div>
+          ) : (
+            <div className="sidebar-no-project" title="No active project set">
+              <i className="ti ti-folder-off" aria-hidden="true" />
+              <span className="sidebar-no-project-label">No project set</span>
             </div>
           )}
 
