@@ -2303,12 +2303,14 @@ button[data-variant="danger"]:hover:not(:disabled),
 /* status-dot--busy so the attention signal feels native to the system.      */
 .req-extract-btn--nudge,
 .req-pull-jira-btn--nudge {
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-subtle);
   animation: nudge-ring 1.6s ease-in-out infinite;
 }
 @keyframes nudge-ring {
-  0%, 100% { box-shadow: 0 0 0 3px var(--accent-subtle); }
-  50%       { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent); }
+  0%, 100% { outline-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-subtle); }
+  50%       { outline-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent); }
 }
 
 /* Small "Next step" hint label that appears next to the nudging button */

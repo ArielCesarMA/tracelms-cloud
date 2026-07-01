@@ -347,7 +347,6 @@ export const RequirementsTab = memo(function RequirementsTab({
         <div className="button-row" style={{ marginTop: 'var(--space-3)' }}>
           <button
             type="button"
-            data-variant="secondary"
             className={`req-extract-btn${nudgeExtract ? ' req-extract-btn--nudge' : ''}`}
             onClick={onParseFiles}
             disabled={isBusy || !hasUploadInput}
