@@ -147,12 +147,13 @@ export const RequirementsTab = memo(function RequirementsTab({
     (hasValidDrafts && uploadedRequirements.length === 0) ||   // files staged but not yet extracted
     manualText.trim().length > 0                               // text typed — always nudge
   );
-  const nudgeJira    = !isBusy && (
+  const hasJiraInput = (
     (jiraMode === 'single'      && singleIssueKey.trim().length > 0) ||
     (jiraMode === 'multiple'    && multipleIssueKeys.trim().length > 0) ||
     (jiraMode === 'epic'        && epicKey.trim().length > 0) ||
     (jiraMode === 'multiStory'  && selectedStoryKeys.length > 0)
-  ) && jiraRequirements.length === 0;
+  );
+  const nudgeJira = !isBusy && hasJiraInput && jiraRequirements.length === 0;
 
   return (
     <section className="panel">
@@ -440,7 +441,7 @@ export const RequirementsTab = memo(function RequirementsTab({
             type="button"
             className={`req-extract-btn${nudgeJira ? ' req-pull-jira-btn--nudge' : ''}`}
             onClick={onPullJira}
-            disabled={isBusy}
+            disabled={isBusy || !hasJiraInput}
           >
             Pull Jira Requirements
           </button>
