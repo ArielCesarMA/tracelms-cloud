@@ -2306,8 +2306,8 @@ button[data-variant="danger"]:hover:not(:disabled),
   border-style: solid !important;
   border-width: 2px !important;
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 5px rgba(13, 148, 136, 0.30);
-  animation: nudge-ring 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 5px rgba(13, 148, 136, 0.30) !important;
+  animation: nudge-ring 1.6s ease-in-out infinite !important;
 }
 @keyframes nudge-ring {
   0%, 100% { box-shadow: 0 0 0 5px rgba(13, 148, 136, 0.30); }
