@@ -138,4 +138,30 @@ State explicitly which user action was mentally walked through to verify the fea
 ### Step 6 — Regression check
 Name the adjacent features that share code with this change. Confirm they are not broken. Example: if `ProjectsTab.tsx` was edited, confirm that project creation, member management, and generation linking still work as expected.
 
-Only after all six steps pass: commit, push, and report done.
+### Step 7 — Implementation summary (required in every response)
+After all steps pass, end the response with an **Implementation summary** block in this exact format:
+
+---
+**Implementation summary**
+- **Feature:** [short name of what was designed/built]
+- **Design principle:** [the UX/engineering principle applied — e.g., proximity, progressive disclosure, hierarchy]
+- **Changes:** [file:line links for every file touched]
+- **Commit:** [hash] — pushed to `main`
+- **To see the change — restart both dev servers:**
+
+  **Terminal 1 (backend)** — from project root:
+  ```bash
+  npm run dev:watch
+  ```
+  **Terminal 2 (frontend):**
+  ```bash
+  cd frontend && npm run dev
+  ```
+  Then hard-refresh the browser: **`Ctrl+Shift+R`**
+
+- **Verify:** [explicit user steps to confirm the feature end-to-end]
+---
+
+This block is mandatory. Do not omit it. Do not tell the user the work is done without it.
+
+Only after all seven steps pass: commit, push, and report done.

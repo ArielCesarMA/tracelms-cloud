@@ -352,6 +352,18 @@ After all steps pass, end the response with a **Fix/Resolution** block in this e
 - **Root cause:** `clearAll()` in `App.tsx` was missing 8 Jira Pull state setters added when the feature launched.
 - **Fix applied:** Added `setJiraMode`, `setSingleIssueKey`, `setMultipleIssueKeys`, `setEpicKey`, `setStoryQuery`, `setStoryOptions`, `setSelectedStoryKeys`, `setJiraRequirements` to the `clearAll` callback in [`frontend/src/App.tsx`](frontend/src/App.tsx:361).
 - **Commit:** `a8bce11` — pushed to `main`.
+- **To see the fix — restart both dev servers:**
+
+  **Terminal 1 (backend)** — from project root:
+  ```bash
+  npm run dev:watch
+  ```
+  **Terminal 2 (frontend):**
+  ```bash
+  cd frontend && npm run dev
+  ```
+  Then hard-refresh the browser: **`Ctrl+Shift+R`**
+
 - **Verify:** Requirements tab → fill Jira Pull fields → click Clear All → all fields reset to defaults.
 ---
 
