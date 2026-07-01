@@ -143,7 +143,7 @@ export const RequirementsTab = memo(function RequirementsTab({
 
   // Nudge: highlight the logical next-step button when its precondition is freshly met.
   // Only one button nudges at a time; nudge stops once the step is complete.
-  const nudgeExtract = !isBusy && hasValidDrafts && uploadedRequirements.length === 0;
+  const nudgeExtract = !isBusy && (hasValidDrafts || manualText.trim().length > 0) && uploadedRequirements.length === 0;
   const nudgeJira    = !isBusy && (
     (jiraMode === 'single'      && singleIssueKey.trim().length > 0) ||
     (jiraMode === 'multiple'    && multipleIssueKeys.trim().length > 0) ||
