@@ -361,8 +361,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
   const clearAll = useCallback((): void => {
     localStorage.setItem('tracelms-session-cleared', 'true');
     setIsBusy(false);
-    // Keep requirements intact so the user can re-generate immediately.
-    // Only clear the generated artifacts and staged file queue.
+    // Clear the staged file queue and all generated artifacts.
     setUploadDrafts([]);
     setRequirementsReviewed(false);
     setEnhancement(emptyEnhancement);
@@ -375,6 +374,15 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     setGenerationProgress('');
     setFailedStep(null);
     setFailedMessage('');
+    // Clear Jira Pull fields so re-run starts fresh.
+    setJiraMode('single');
+    setSingleIssueKey('');
+    setMultipleIssueKeys('');
+    setEpicKey('');
+    setStoryQuery('');
+    setStoryOptions([]);
+    setSelectedStoryKeys([]);
+    setJiraRequirements([]);
   }, []);
 
   // ── Automation ────────────────────────────────────────────────────────────
