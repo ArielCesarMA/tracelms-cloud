@@ -36,6 +36,7 @@
   --amber:            #d97706;
   --amber-subtle:     rgba(217, 119, 6, 0.10);
   --amber-border:     rgba(217, 119, 6, 0.30);
+  --color-warning:    #b45309;
 
   --red:              #dc2626;
   --red-subtle:       rgba(220, 38, 38, 0.10);
@@ -2483,6 +2484,28 @@ button[data-variant="danger"]:hover:not(:disabled),
   flex-shrink: 0;
 }
 .req-injection-warning-dismiss:hover { opacity: 1; }
+
+.req-char-counter {
+  text-align: right;
+  font-size: var(--text-xs);
+  margin-top: 2px;
+  color: var(--text-tertiary);
+}
+.req-char-counter--warn { color: var(--color-warning); }
+.req-char-counter--over { color: #e05252; }
+
+.req-pending-extract-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-warning);
+}
+
+.req-sticky-feedback {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: 0 var(--space-2);
+}
 
 .req-gen-context {
   display: flex;

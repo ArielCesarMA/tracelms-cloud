@@ -32,6 +32,7 @@ type Props = {
   storyOptions: JiraIssueSummary[];
   selectedStoryKeys: string[];
   isBusy: boolean;
+  isReadOnly?: boolean;
   feedback: string;
   selectedProvider: string;
   onInstructionTextChange: (text: string) => void;
@@ -64,7 +65,7 @@ export const RequirementsTab = memo(function RequirementsTab({
   requirementsReviewed, generationProgress,
   uploadDrafts, jiraMode, singleIssueKey, multipleIssueKeys,
   epicKey, storyQuery, storyOptions, selectedStoryKeys,
-  isBusy, feedback, selectedProvider,
+  isBusy, isReadOnly = false, feedback, selectedProvider,
   onInstructionTextChange, onManualTextChange, onReviewedChange, onGenerateAll, onClearAll,
   onFileChange, onFilesDropped, onParseFiles, documentWarnings, onDismissWarnings,
   onRequirementUpdate, onRequirementDelete,
@@ -190,7 +191,7 @@ export const RequirementsTab = memo(function RequirementsTab({
               type="button"
               className="req-clear-btn"
               onClick={handleClearRequest}
-              disabled={isBusy}
+              disabled={isBusy || isReadOnly}
               title="Clear all generated artifacts — requirements are kept so you can re-generate"
             >
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -261,7 +262,7 @@ export const RequirementsTab = memo(function RequirementsTab({
                 multiple
                 accept={ACCEPTED_EXTS}
                 onChange={onFileChange}
-                disabled={isBusy}
+                disabled={isBusy || isReadOnly}
                 style={{ display: 'none' }}
               />
             </label>
@@ -298,7 +299,7 @@ export const RequirementsTab = memo(function RequirementsTab({
           value={manualText}
           onChange={(e) => onManualTextChange(e.target.value)}
           placeholder="Paste or type requirements here — user stories, BRD/SRS content, or free-form text. Combined with uploaded files in one extraction call."
-          disabled={isBusy}
+          disabled={isBusy || isReadOnly}
           rows={3}
           aria-label="Manual requirements input"
           maxLength={MAX_REQUIREMENT_CHARS}
@@ -308,12 +309,7 @@ export const RequirementsTab = memo(function RequirementsTab({
           const isWarn = pct >= WARN_THRESHOLD;
           const isOver = manualText.length >= MAX_REQUIREMENT_CHARS;
           return (
-            <div style={{
-              textAlign: 'right',
-              fontSize: 'var(--text-xs)',
-              marginTop: 2,
-              color: isOver ? '#e05252' : isWarn ? '#b45309' : 'var(--text-tertiary)',
-            }}>
+            <div className={`req-char-counter${isOver ? ' req-char-counter--over' : isWarn ? ' req-char-counter--warn' : ''}`}>
               {manualText.length.toLocaleString()} / {MAX_REQUIREMENT_CHARS.toLocaleString()}
               {isWarn && !isOver && ' — approaching limit'}
               {isOver && ' — limit reached'}
@@ -353,7 +349,7 @@ export const RequirementsTab = memo(function RequirementsTab({
             type="button"
             className={`req-extract-btn${nudgeExtract ? ' req-extract-btn--nudge' : ''}`}
             onClick={onParseFiles}
-            disabled={isBusy || !hasUploadInput}
+            disabled={isBusy || !hasUploadInput || isReadOnly}
           >
             {extractLabel}
           </button>
@@ -393,7 +389,7 @@ export const RequirementsTab = memo(function RequirementsTab({
 
         <div className="field-row">
           <label htmlFor="jiraMode">Mode</label>
-          <select id="jiraMode" value={jiraMode} onChange={(e) => onJiraModeChange(e.target.value as JiraMode)}>
+          <select id="jiraMode" value={jiraMode} disabled={isBusy} onChange={(e) => onJiraModeChange(e.target.value as JiraMode)}>
             <option value="single">Single Issue</option>
             <option value="multiple">Multiple Issues (comma-separated)</option>
             <option value="epic">Epic Children</option>
@@ -404,19 +400,19 @@ export const RequirementsTab = memo(function RequirementsTab({
         {jiraMode === 'single' && (
           <div className="field-row">
             <label htmlFor="singleIssueKey">Issue Key</label>
-            <input id="singleIssueKey" type="text" placeholder="PROJ-123" value={singleIssueKey} onChange={(e) => onSingleKeyChange(e.target.value)} />
+            <input id="singleIssueKey" type="text" placeholder="PROJ-123" value={singleIssueKey} disabled={isBusy} onChange={(e) => onSingleKeyChange(e.target.value)} />
           </div>
         )}
         {jiraMode === 'multiple' && (
           <div className="field-stack">
             <label htmlFor="multipleIssueKeys">Issue Keys</label>
-            <textarea id="multipleIssueKeys" className="small-text" placeholder="PROJ-101, PROJ-102, PROJ-103" value={multipleIssueKeys} onChange={(e) => onMultipleKeysChange(e.target.value)} />
+            <textarea id="multipleIssueKeys" className="small-text" placeholder="PROJ-101, PROJ-102, PROJ-103" value={multipleIssueKeys} disabled={isBusy} onChange={(e) => onMultipleKeysChange(e.target.value)} />
           </div>
         )}
         {jiraMode === 'epic' && (
           <div className="field-row">
             <label htmlFor="epicKey">Epic Key</label>
-            <input id="epicKey" type="text" placeholder="PROJ-EPIC-1" value={epicKey} onChange={(e) => onEpicKeyChange(e.target.value)} />
+            <input id="epicKey" type="text" placeholder="PROJ-EPIC-1" value={epicKey} disabled={isBusy} onChange={(e) => onEpicKeyChange(e.target.value)} />
           </div>
         )}
         {jiraMode === 'multiStory' && (
@@ -428,7 +424,7 @@ export const RequirementsTab = memo(function RequirementsTab({
             <div className="story-list">
               {storyOptions.map((story) => (
                 <label key={story.key} className="story-item">
-                  <input type="checkbox" checked={selectedStoryKeySet.has(story.key)} onChange={() => onToggleStoryKey(story.key)} />
+                  <input type="checkbox" checked={selectedStoryKeySet.has(story.key)} disabled={isBusy} onChange={() => onToggleStoryKey(story.key)} />
                   <span>{story.key}: {story.summary}</span>
                 </label>
               ))}
@@ -441,7 +437,7 @@ export const RequirementsTab = memo(function RequirementsTab({
             type="button"
             className={`req-extract-btn${nudgeJira ? ' req-pull-jira-btn--nudge' : ''}`}
             onClick={onPullJira}
-            disabled={isBusy || !hasJiraInput}
+            disabled={isBusy || !hasJiraInput || isReadOnly}
           >
             Pull Jira Requirements
           </button>
@@ -461,8 +457,6 @@ export const RequirementsTab = memo(function RequirementsTab({
           />
         )}
       </div>
-
-      <p className="feedback">{feedback}</p>
 
       {/* Spacer reserves space so content above isn't hidden behind fixed bar */}
       <div className="req-sticky-bar-spacer" aria-hidden="true" />
@@ -504,6 +498,19 @@ export const RequirementsTab = memo(function RequirementsTab({
           )}
         </div>
 
+        {/* ── Feedback — visible without scrolling during extraction/generation */}
+        {feedback && (
+          <p className="feedback req-sticky-feedback" aria-live="polite">{feedback}</p>
+        )}
+
+        {/* ── Active project confirmation ───────────────────────────────────── */}
+        {activeProjectId && (
+          <div className="req-project-indicator req-project-indicator--active" role="status">
+            <i className="ti ti-folder-check" aria-hidden="true" />
+            <span>Active project: <strong>{activeProjectName}</strong></span>
+          </div>
+        )}
+
         {/* ── No active project gate — adjacent to the action it guards ─────── */}
         {!activeProjectId && !confirmNoProject && (
           <div className="req-project-indicator req-project-indicator--warn" role="status">
@@ -539,6 +546,11 @@ export const RequirementsTab = memo(function RequirementsTab({
 
         {/* CTA row — review gate + generate */}
         <div className="req-cta-zone">
+          {pendingExtractOnly && (
+            <p className="req-pending-extract-hint" role="status">
+              Files are staged — click <strong>Extract Requirements</strong> above first.
+            </p>
+          )}
           {showReviewGate && (
             <label
               className={`req-review-gate${requirementsReviewed ? ' req-review-gate--checked' : ''}`}
@@ -557,7 +569,7 @@ export const RequirementsTab = memo(function RequirementsTab({
           <button
             type="button"
             onClick={activeProjectId ? onGenerateAll : () => setConfirmNoProject(true)}
-            disabled={isBusy || !hasAnyRequirements || pendingExtractOnly || confirmNoProject}
+            disabled={isBusy || !hasAnyRequirements || pendingExtractOnly || confirmNoProject || isReadOnly}
             className={`req-generate-btn${requirementsReviewed ? ' req-generate-btn--ready' : ''}`}
             title={
               !hasAnyRequirements

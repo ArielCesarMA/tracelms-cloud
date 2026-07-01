@@ -398,6 +398,8 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     setStoryOptions([]);
     setSelectedStoryKeys([]);
     setJiraRequirements([]);
+    setDocumentWarnings([]);
+    setParsedFiles([]);
   }, []);
 
   // ── Automation ────────────────────────────────────────────────────────────
@@ -886,6 +888,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               storyOptions={storyOptions}
               selectedStoryKeys={selectedStoryKeys}
               isBusy={isBusy}
+              isReadOnly={!canWrite(userRole)}
               feedback={feedback}
               selectedProvider={settings.llmProvider}
               onInstructionTextChange={setInstructionText}

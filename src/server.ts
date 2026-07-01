@@ -75,6 +75,19 @@ const generateLimiter = rateLimit({
   message: { error: 'Rate limit reached. Please wait before generating again.' },
 });
 
+// Jira: 20 requests per minute per authenticated user (Jira API quota protection)
+const jiraLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const authed = req as import('./middleware/auth').AuthenticatedRequest;
+    return authed.user?.userId ?? (req.ip ?? 'anonymous');
+  },
+  message: { error: 'Too many Jira requests. Please wait before trying again.' },
+});
+
 // ── Auth middleware ────────────────────────────────────────────────────────
 // Protects all /api/* routes except /api/health and /api/auth/*.
 app.use('/api', authMiddleware);
@@ -90,7 +103,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/parse', parseRouter);
 app.use('/api/generate', generateLimiter, generateRouter);
-app.use('/api/jira', jiraRouter);
+app.use('/api/jira', jiraLimiter, jiraRouter);
 app.use('/api/xray', xrayRouter);
 app.use('/api/generation', generationRouter);
 app.use('/api/projects', projectsRouter);

@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import type { AuthenticatedRequest } from '../middleware/auth';
 import fs from 'fs';
 import path from 'path';
 import { PromptStep } from '@prisma/client';
@@ -286,6 +287,12 @@ async function runAutomationBatched(
 // One call per image; caller uses Promise.all for multiple images.
 // ------------------------------------------------------------------
 generateRouter.post('/extract-image-requirements', wrap(async (req: Request, res: Response) => {
+  const imgRole = (req as AuthenticatedRequest).user?.role;
+  if (!imgRole || !['OWNER', 'ADMIN', 'EDITOR'].includes(imgRole)) {
+    res.status(403).json({ error: 'Insufficient permissions to generate.' });
+    return;
+  }
+
   const { imageBase64, mimeType, settings } = req.body as {
     imageBase64: string;
     mimeType: string;
@@ -348,10 +355,19 @@ generateRouter.post('/extract-image-requirements', wrap(async (req: Request, res
 generateRouter.post('/extract-requirements/stream', wrap(async (req: Request, res: Response) => {
   const { rawText, settings } = req.body as { rawText: string; settings: Settings };
 
+  const role = (req as AuthenticatedRequest).user?.role;
+  if (!role || !['OWNER', 'ADMIN', 'EDITOR'].includes(role)) {
+    res.status(403).json({ error: 'Insufficient permissions to generate.' });
+    return;
+  }
+
   if (!rawText?.trim()) {
     res.status(400).json({ error: 'No content provided for extraction.' });
     return;
   }
+
+  let aborted = false;
+  req.on('close', () => { aborted = true; });
 
   const sse = openSse(res);
   sse.send({ type: 'started' });
@@ -364,6 +380,7 @@ generateRouter.post('/extract-requirements/stream', wrap(async (req: Request, re
     let lineBuffer = '';
 
     await callLLMStream(settings, systemPrompt, userPrompt, (chunk) => {
+      if (aborted) return;
       lineBuffer += chunk;
       // Process complete lines (NDJSON: one JSON object per line)
       const lines = lineBuffer.split('\n');
@@ -385,7 +402,7 @@ generateRouter.post('/extract-requirements/stream', wrap(async (req: Request, re
           // Skip malformed lines silently — partial chunks will be retried next tick
         }
       }
-    }, () => sse.send({ type: 'model-info', isReasoning: true }));
+    }, () => { if (!aborted) sse.send({ type: 'model-info', isReasoning: true }); });
 
     // Flush any remaining content in the buffer
     if (lineBuffer.trim()) {
@@ -398,9 +415,9 @@ generateRouter.post('/extract-requirements/stream', wrap(async (req: Request, re
       } catch { /* ignore final partial line */ }
     }
 
-    sse.send({ type: 'done', total: rowCount });
+    if (!aborted) sse.send({ type: 'done', total: rowCount });
   } catch (err) {
-    sse.send({ type: 'error', message: err instanceof Error ? err.message : 'Extraction failed.' });
+    if (!aborted) sse.send({ type: 'error', message: err instanceof Error ? err.message : 'Extraction failed.' });
   } finally {
     sse.end();
   }

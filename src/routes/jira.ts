@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { JiraXrayService } from '../services/jira/JiraXrayService';
+import type { AuthenticatedRequest } from '../middleware/auth';
 
 export const jiraRouter = Router();
 
@@ -24,6 +25,11 @@ function createService(s: JiraSettings): JiraXrayService {
 
 // POST /api/jira/search
 jiraRouter.post('/search', wrap(async (req: Request, res: Response) => {
+  const searchRole = (req as AuthenticatedRequest).user?.role;
+  if (!searchRole || !['OWNER', 'ADMIN', 'EDITOR'].includes(searchRole)) {
+    res.status(403).json({ error: 'Insufficient permissions.' });
+    return;
+  }
   const { query, settings } = req.body as { query: string; settings: JiraSettings };
   try {
     const service = createService(settings);
@@ -36,6 +42,11 @@ jiraRouter.post('/search', wrap(async (req: Request, res: Response) => {
 
 // POST /api/jira/pull
 jiraRouter.post('/pull', wrap(async (req: Request, res: Response) => {
+  const pullRole = (req as AuthenticatedRequest).user?.role;
+  if (!pullRole || !['OWNER', 'ADMIN', 'EDITOR'].includes(pullRole)) {
+    res.status(403).json({ error: 'Insufficient permissions.' });
+    return;
+  }
   const { mode, payload, settings } = req.body as {
     mode: string;
     payload: Record<string, string>;
