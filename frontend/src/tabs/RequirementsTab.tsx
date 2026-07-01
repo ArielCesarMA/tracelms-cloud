@@ -40,6 +40,7 @@ type Props = {
   onGenerateAll: () => void;
   onClearAll: () => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+  onFilesDropped: (files: File[]) => Promise<void>;
   onParseFiles: () => void;
   documentWarnings: string[];
   onDismissWarnings: () => void;
@@ -65,7 +66,7 @@ export const RequirementsTab = memo(function RequirementsTab({
   epicKey, storyQuery, storyOptions, selectedStoryKeys,
   isBusy, feedback, selectedProvider,
   onInstructionTextChange, onManualTextChange, onReviewedChange, onGenerateAll, onClearAll,
-  onFileChange, onParseFiles, documentWarnings, onDismissWarnings,
+  onFileChange, onFilesDropped, onParseFiles, documentWarnings, onDismissWarnings,
   onRequirementUpdate, onRequirementDelete,
   onJiraRequirementUpdate, onJiraRequirementDelete,
   onJiraModeChange, onSingleKeyChange, onMultipleKeysChange, onEpicKeyChange,
@@ -102,14 +103,8 @@ export const RequirementsTab = memo(function RequirementsTab({
       return validExts.includes(ext);
     });
     if (!files.length) return;
-    // Synthesize a change event to reuse the existing handler
-    const dt = new DataTransfer();
-    files.forEach((f) => dt.items.add(f));
-    const input = document.createElement('input');
-    input.type = 'file';
-    Object.defineProperty(input, 'files', { value: dt.files });
-    onFileChange({ target: input } as unknown as React.ChangeEvent<HTMLInputElement>);
-  }, [onFileChange]);
+    void onFilesDropped(files);
+  }, [onFilesDropped]);
 
   const hasUploadInput = uploadDrafts.length > 0 || manualText.trim().length > 0;
   const hasImageDrafts = uploadDrafts.some((d) => d.isImage && !d.sizeError);

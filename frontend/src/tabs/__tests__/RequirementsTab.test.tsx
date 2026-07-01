@@ -31,6 +31,7 @@ const baseProps = {
   onGenerateAll: noop,
   onClearAll: noop,
   onFileChange: noop,
+  onFilesDropped: noop,
   onParseFiles: noop,
   onRequirementUpdate: noop,
   onRequirementDelete: noop,

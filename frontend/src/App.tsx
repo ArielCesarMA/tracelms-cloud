@@ -252,43 +252,51 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
     return btoa(binary);
   }, []);
 
+  const processFiles = useCallback(async (files: File[]): Promise<void> => {
+    if (files.length === 0) return;
+    try {
+      const next = await Promise.all(
+        files.map(async (file): Promise<UploadDraft> => {
+          const isImageFile = (ACCEPTED_IMAGE_MIMES as readonly string[]).includes(file.type);
+          if (isImageFile && file.size > IMAGE_SIZE_LIMIT_BYTES) {
+            return {
+              name: file.name,
+              mimeType: file.type,
+              contentBase64: '',
+              isImage: true,
+              thumbnailUrl: URL.createObjectURL(file),
+              sizeError: 'Image too large — maximum 10MB. Try compressing or cropping.',
+            };
+          }
+          if (isImageFile) {
+            const contentBase64 = await resizeImageIfNeeded(file);
+            return {
+              name: file.name,
+              mimeType: file.type,
+              contentBase64,
+              isImage: true,
+              thumbnailUrl: URL.createObjectURL(file),
+            };
+          }
+          return {
+            name: file.name,
+            mimeType: file.type,
+            contentBase64: await toBase64(file),
+          };
+        })
+      );
+      setUploadDrafts(next);
+      setFeedback(`${next.length} file(s) selected.`);
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : 'Failed to process files.');
+    }
+  }, [toBase64]);
+
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    const next = await Promise.all(
-      Array.from(files).map(async (file): Promise<UploadDraft> => {
-        const isImageFile = (ACCEPTED_IMAGE_MIMES as readonly string[]).includes(file.type);
-        // Client-side size check for images
-        if (isImageFile && file.size > IMAGE_SIZE_LIMIT_BYTES) {
-          return {
-            name: file.name,
-            mimeType: file.type,
-            contentBase64: '',
-            isImage: true,
-            thumbnailUrl: URL.createObjectURL(file),
-            sizeError: 'Image too large — maximum 10MB. Try compressing or cropping.',
-          };
-        }
-        if (isImageFile) {
-          const contentBase64 = await resizeImageIfNeeded(file);
-          return {
-            name: file.name,
-            mimeType: file.type,
-            contentBase64,
-            isImage: true,
-            thumbnailUrl: URL.createObjectURL(file),
-          };
-        }
-        return {
-          name: file.name,
-          mimeType: file.type,
-          contentBase64: await toBase64(file),
-        };
-      })
-    );
-    setUploadDrafts(next);
-    setFeedback(`${next.length} file(s) selected.`);
-  }, [toBase64]);
+    await processFiles(Array.from(files));
+  }, [processFiles]);
 
   const handleRequirementUpdate = useCallback((reqId: string, field: keyof ExtractedRequirement, value: string): void => {
     setUploadedRequirements((prev) => {
@@ -882,6 +890,7 @@ function AppInner({ onLogout }: AppInnerProps): JSX.Element {
               onGenerateAll={handleGenerateAll}
               onClearAll={clearAll}
               onFileChange={handleFileChange}
+              onFilesDropped={processFiles}
               onParseFiles={parseSelectedFiles}
               documentWarnings={documentWarnings}
               onDismissWarnings={() => setDocumentWarnings([])}
