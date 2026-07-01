@@ -73,6 +73,7 @@ export const RequirementsTab = memo(function RequirementsTab({
 }: Props): JSX.Element {
   const selectedStoryKeySet = useMemo(() => new Set(selectedStoryKeys), [selectedStoryKeys]);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [confirmNoProject, setConfirmNoProject] = useState(false);
   const [genContextOpen, setGenContextOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -488,12 +489,35 @@ export const RequirementsTab = memo(function RequirementsTab({
         </div>
 
         {/* ── No active project gate — adjacent to the action it guards ─────── */}
-        {!activeProjectId && (
+        {!activeProjectId && !confirmNoProject && (
           <div className="req-project-indicator req-project-indicator--warn" role="status">
             <i className="ti ti-alert-triangle" aria-hidden="true" />
             <span>No active project — artifacts won&apos;t be auto-saved.{' '}
               <button className="link-btn" onClick={onGoToProjects}>Set an active project →</button>
             </span>
+          </div>
+        )}
+
+        {/* Inline confirmation — shown when user clicks Generate without a project */}
+        {confirmNoProject && (
+          <div className="req-confirm-zone" role="alert">
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <span>No active project — artifacts won&apos;t be saved. Generate anyway?</span>
+            <div className="req-confirm-actions">
+              <button
+                type="button"
+                data-variant="secondary"
+                onClick={() => { setConfirmNoProject(false); onGoToProjects(); }}
+              >
+                Set project
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmNoProject(false); onGenerateAll(); }}
+              >
+                Generate anyway
+              </button>
+            </div>
           </div>
         )}
 
@@ -516,8 +540,8 @@ export const RequirementsTab = memo(function RequirementsTab({
 
           <button
             type="button"
-            onClick={onGenerateAll}
-            disabled={isBusy || !hasAnyRequirements || pendingExtractOnly}
+            onClick={activeProjectId ? onGenerateAll : () => setConfirmNoProject(true)}
+            disabled={isBusy || !hasAnyRequirements || pendingExtractOnly || confirmNoProject}
             className={`req-generate-btn${requirementsReviewed ? ' req-generate-btn--ready' : ''}`}
             title={
               !hasAnyRequirements
