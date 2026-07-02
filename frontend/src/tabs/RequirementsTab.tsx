@@ -169,7 +169,7 @@ export const RequirementsTab = memo(function RequirementsTab({
           <h2>Requirements</h2>
           <p className="helper-text">
             <i className="ti ti-file-upload req-helper-icon" aria-hidden="true" />
-            <strong className="req-helper-keyword">Load</strong> requirements from files or Jira,{' '}
+            <strong className="req-helper-keyword">Load</strong> source material from files or Jira,{' '}
             <i className="ti ti-table req-helper-icon" aria-hidden="true" />
             <strong className="req-helper-keyword">review and edit</strong> the extracted table, then{' '}
             <i className="ti ti-bolt req-helper-icon" aria-hidden="true" />
@@ -499,7 +499,7 @@ export const RequirementsTab = memo(function RequirementsTab({
               className="req-gen-context-textarea req-instructions-textarea"
               value={instructionText}
               onChange={(e) => onInstructionTextChange(e.target.value)}
-              placeholder="Optional: add special instructions for the LLM — e.g. 'Focus on security edge cases', 'Prioritize GDPR compliance requirements', 'Group by epic where possible'."
+              placeholder="Optional: add special instructions for the AI — e.g. 'Focus on security edge cases', 'Prioritize GDPR compliance requirements', 'Group by epic where possible'."
               disabled={isBusy}
               rows={3}
             />
