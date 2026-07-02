@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type RequirementEnhancement } from '../types';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyState } from '../components/EmptyState';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 import { downloadFile, escapeCsvCell } from '../utils';
 
 type CardKey = keyof RequirementEnhancement;
@@ -10,6 +11,7 @@ type Props = {
   enhancement: RequirementEnhancement;
   isBusy: boolean;
   feedback: string;
+  feedbackDetail?: string;
   generatedAt?: Date | null;
   onGenerate: () => void;
   onUpdateItem: (key: CardKey, index: number, value: string) => void;
@@ -28,7 +30,7 @@ const CARDS: { key: CardKey; label: string }[] = [
 type EditingState = { key: CardKey; index: number; value: string } | null;
 
 export const EnhancementTab = memo(function EnhancementTab({
-  enhancement, isBusy, feedback, generatedAt,
+  enhancement, isBusy, feedback, feedbackDetail, generatedAt,
   onGenerate, onUpdateItem, onDeleteItem,
 }: Props): JSX.Element {
   const [collapsed, setCollapsed] = useState<Partial<Record<CardKey, boolean>>>({});
@@ -298,7 +300,7 @@ export const EnhancementTab = memo(function EnhancementTab({
         </>
       )}
 
-      <p className="feedback">{feedback}</p>
+      <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} />
     </section>
   );
 });

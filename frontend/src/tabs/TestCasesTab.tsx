@@ -3,6 +3,7 @@ import { type TestCaseItem, type XrayPushPreview, type XrayPushProgress, type Xr
 import { useAuth, canPush, canWrite } from '../contexts/AuthContext';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyState } from '../components/EmptyState';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 import { downloadFile, escapeCsvCell } from '../utils';
 import { patchGenerationTestCases } from '../api/client';
 
@@ -13,6 +14,7 @@ type Props = {
   xrayPushedIssues: XrayPushedIssue[];
   isBusy: boolean;
   feedback: string;
+  feedbackDetail?: string;
   generationId: string | null;
   onGenerateTestCases: () => void;
   onTestCasesChange: (updated: TestCaseItem[]) => void;
@@ -78,7 +80,7 @@ function GherkinBlock({ text }: { text: string }): JSX.Element {
 
 export const TestCasesTab = memo(function TestCasesTab({
   testCases, xrayPushPreview, xrayPushProgress, xrayPushedIssues,
-  isBusy, feedback, generationId,
+  isBusy, feedback, feedbackDetail, generationId,
   onGenerateTestCases, onTestCasesChange,
   onPreviewPush, onPushToXray, onRetryFailed, onClearHistory,
 }: Props): JSX.Element {
@@ -790,7 +792,7 @@ export const TestCasesTab = memo(function TestCasesTab({
         </div>
       )}
 
-      <p className="feedback">{feedback}</p>
+      <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} />
     </section>
   );
 });

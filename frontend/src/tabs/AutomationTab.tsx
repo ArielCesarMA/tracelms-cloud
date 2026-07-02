@@ -1,11 +1,13 @@
 import { memo, useMemo } from 'react';
 import { EmptyState } from '../components/EmptyState';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 import { type AutomationAnalysis, type AutomationCandidateItem } from '../types';
 
 type Props = {
   automation: AutomationAnalysis | null;
   isBusy: boolean;
   feedback: string;
+  feedbackDetail?: string;
   onAnalyze: () => void;
   onExportJson: () => void;
   onExportCsv: () => void;
@@ -60,7 +62,7 @@ function AutoCard({ item }: { item: AutomationCandidateItem }): JSX.Element {
   );
 }
 
-export const AutomationTab = memo(function AutomationTab({ automation, isBusy, feedback, onAnalyze, onExportJson, onExportCsv }: Props): JSX.Element {
+export const AutomationTab = memo(function AutomationTab({ automation, isBusy, feedback, feedbackDetail, onAnalyze, onExportJson, onExportCsv }: Props): JSX.Element {
   const byLayer = useMemo(() => {
     const groups: Record<'Unit' | 'API' | 'UI', AutomationCandidateItem[]> = { Unit: [], API: [], UI: [] };
     for (const item of automation?.items ?? []) groups[item.layer].push(item);
@@ -106,7 +108,7 @@ export const AutomationTab = memo(function AutomationTab({ automation, isBusy, f
           </div>
         </>
       )}
-      <p className="feedback">{feedback}</p>
+      <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} />
     </section>
   );
 });

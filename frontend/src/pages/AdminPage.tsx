@@ -175,6 +175,7 @@ interface AdminPageProps {
   availableModels: string[];
   isBusy: boolean;
   feedback: string;
+  feedbackDetail?: string;
   onFieldChange: (key: keyof Settings, value: string) => void;
   onSave: () => void;
   onTestLlm: () => void;
@@ -194,6 +195,7 @@ export function AdminPage({
   availableModels,
   isBusy,
   feedback,
+  feedbackDetail,
   onFieldChange,
   onSave,
   onTestLlm,
@@ -247,6 +249,7 @@ export function AdminPage({
               availableModels={availableModels}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               onFieldChange={onFieldChange}
               onSave={onSave}
               onTestLlm={onTestLlm}
@@ -263,6 +266,7 @@ export function AdminPage({
               availableModels={availableModels}
               isBusy={isBusy}
               feedback={feedback}
+              feedbackDetail={feedbackDetail}
               onFieldChange={onFieldChange}
               onSave={onSave}
               onTestLlm={onTestLlm}

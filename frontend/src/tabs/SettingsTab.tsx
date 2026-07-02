@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Tip } from '../components/Tip';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 import { type Settings } from '../types';
 import { useAuth, canManageUsers } from '../contexts/AuthContext';
 
@@ -8,6 +9,7 @@ type Props = {
   availableModels: string[];
   isBusy: boolean;
   feedback: string;
+  feedbackDetail?: string;
   onFieldChange: (key: keyof Settings, value: string) => void;
   onSave: () => void;
   onTestLlm: () => void;
@@ -16,7 +18,7 @@ type Props = {
 };
 
 export const SettingsTab = memo(function SettingsTab({
-  settings, availableModels, isBusy, feedback, onFieldChange, onSave, onTestLlm, onTestJira, section,
+  settings, availableModels, isBusy, feedback, feedbackDetail, onFieldChange, onSave, onTestLlm, onTestJira, section,
 }: Props): JSX.Element {
   const { user: authUser } = useAuth();
   const isSelfOwner = canManageUsers(authUser?.role);
@@ -128,7 +130,7 @@ export const SettingsTab = memo(function SettingsTab({
           Read-only — only the Owner can save global settings.
         </p>
       )}
-      <p className="feedback">{feedback}</p>
+      <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} />
     </section>
   );
 });

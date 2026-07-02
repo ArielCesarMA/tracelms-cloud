@@ -3,11 +3,13 @@ import { type ScenarioItem, type ScenarioType, type ScenarioPriority } from '../
 import { downloadFile, escapeCsvCell } from '../utils';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyState } from '../components/EmptyState';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 
 type Props = {
   scenarios: ScenarioItem[];
   isBusy: boolean;
   feedback: string;
+  feedbackDetail?: string;
   generatedAt?: Date | null;
   onGenerate: () => void;
   onUpdateField: (index: number, key: keyof ScenarioItem, value: string) => void;
@@ -41,7 +43,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 export const ScenariosTab = memo(function ScenariosTab({
-  scenarios, isBusy, feedback, generatedAt,
+  scenarios, isBusy, feedback, feedbackDetail, generatedAt,
   onGenerate, onUpdateField, onAddScenario, onDeleteScenario,
 }: Props): JSX.Element {
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
@@ -469,7 +471,7 @@ export const ScenariosTab = memo(function ScenariosTab({
         </>
       )}
 
-      <p className="feedback">{feedback}</p>
+      <FeedbackMessage message={feedback} detail={feedbackDetail} isBusy={isBusy} />
     </section>
   );
 });
