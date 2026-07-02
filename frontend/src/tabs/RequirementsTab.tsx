@@ -169,7 +169,7 @@ export const RequirementsTab = memo(function RequirementsTab({
           <h2>Requirements</h2>
           <p className="helper-text">
             <i className="ti ti-file-upload req-helper-icon" aria-hidden="true" />
-            <strong className="req-helper-keyword">Load</strong> source material from files or Jira,{' '}
+            <strong className="req-helper-keyword">Load</strong> source material from files, Jira, or pasted text,{' '}
             <i className="ti ti-table req-helper-icon" aria-hidden="true" />
             <strong className="req-helper-keyword">review and edit</strong> the extracted table, then{' '}
             <i className="ti ti-bolt req-helper-icon" aria-hidden="true" />
