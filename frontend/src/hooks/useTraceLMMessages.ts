@@ -22,6 +22,59 @@ import {
 import * as api from '../api/client';
 import { buildRequirementsPayload } from '../utils';
 
+// ── Text quality guard ────────────────────────────────────────────────────────
+// Returns a user-facing reason string when the text looks like gibberish,
+// or null when it appears to be valid human-readable content worth sending to
+// the LLM. Applied only to manual text — parsed file content is trusted.
+//
+// Checks (in order):
+//   1. Minimum length — at least 10 characters
+//   2. Minimum word count — at least 3 whitespace-separated tokens
+//   3. Vowel coverage — ≥ 40 % of words (3+ alpha chars) must contain a vowel
+//      (catches keyboard mash: "asdfgh qwerty zxcvbn")
+//   4. Unique-character floor — at least 5 distinct alpha chars in the whole text
+//      (catches repetition: "aaaa bbbb cccc")
+//   5. Single-character dominance — no one letter accounts for > 40 % of all
+//      alpha characters (catches "aaaaaaaa bbb aaaa aa")
+function validateRequirementText(text: string): string | null {
+  const cleaned = text.trim();
+
+  if (cleaned.length < 10) {
+    return 'The text is too short to extract requirements from. Please add more detail.';
+  }
+
+  const words = cleaned.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length < 3) {
+    return 'Please enter at least a few words or sentences describing your requirements.';
+  }
+
+  // Vowel coverage check
+  const VOWELS = /[aeiouy]/i;
+  const longWords = words.filter((w) => w.replace(/[^a-z]/gi, '').length >= 3);
+  if (longWords.length >= 2) {
+    const withVowels = longWords.filter((w) => VOWELS.test(w));
+    if (withVowels.length / longWords.length < 0.4) {
+      return 'The text doesn\'t look like readable requirements. Please enter proper sentences or phrases.';
+    }
+  }
+
+  // Unique-character and dominance checks
+  const letters = cleaned.replace(/[^a-z]/gi, '').toLowerCase();
+  if (letters.length >= 6) {
+    if (new Set(letters).size < 5) {
+      return 'The text doesn\'t look like readable requirements. Please enter proper sentences or phrases.';
+    }
+    const counts: Record<string, number> = {};
+    for (const ch of letters) counts[ch] = (counts[ch] ?? 0) + 1;
+    const maxCount = Math.max(...Object.values(counts));
+    if (maxCount / letters.length > 0.4) {
+      return 'The text doesn\'t look like readable requirements. Please enter proper sentences or phrases.';
+    }
+  }
+
+  return null; // text appears valid
+}
+
 type Refs = {
   generateAllStepRef: MutableRefObject<number>;
   requirementTextRef: MutableRefObject<string>;
@@ -267,6 +320,18 @@ export function useTraceLMMessages(params: Refs & Setters): TraceLMActions {
       setFeedback('Add files or type requirements before extracting.');
       return;
     }
+
+    // Validate manual text quality before spending any API tokens.
+    // File content is trusted (parsed from real documents), so only manual
+    // text needs this check.
+    if (hasManual) {
+      const textError = validateRequirementText(manualTextRef.current.trim());
+      if (textError) {
+        setFeedback(textError);
+        return;
+      }
+    }
+
     setIsBusy(true);
     setFeedbackDetail('');
     setUploadedRequirements([]);

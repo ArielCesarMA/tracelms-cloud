@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, FormEvent } from 'react';
 import { login, setAuthToken, getPublicStats, type PublicTestimonial } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { FeedbackMessage } from '../components/FeedbackMessage';
 
 interface LoginPageProps {
   onAuthenticated: () => void;
@@ -36,6 +37,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
   const [email, setEmail]             = useState('');
   const [password, setPassword]       = useState('');
   const [error, setError]             = useState('');
+  const [errorDetail, setErrorDetail]  = useState('');
   const [loading, setLoading]         = useState(false);
   const [forgotOpen, setForgotOpen]   = useState(false);
   const [generationsCount, setGenerationsCount] = useState<number>(0);
@@ -49,9 +51,30 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
     }).catch(() => { /* silent — login page must always render */ });
   }, []);
 
+  function detectLoginError(raw: string): string {
+    const r = raw.toLowerCase();
+    if (r.includes('failed to fetch') || r.includes('network error') || r.includes('networkerror') ||
+        r.includes('err_connection') || r.includes('err_network') || r.includes('econnrefused')) {
+      return 'Unable to reach the server. Check your internet connection and try again.';
+    }
+    if (r.includes('502') || r.includes('503') || r.includes('504') || r.includes('bad gateway') ||
+        r.includes('service unavailable') || r.includes('gateway timeout')) {
+      return 'The server is temporarily unavailable. Please try again in a moment.';
+    }
+    if (r.includes('401') || r.includes('invalid credentials') || r.includes('invalid email') ||
+        r.includes('invalid password') || r.includes('wrong password') || r.includes('user not found')) {
+      return 'Incorrect email or password. Please try again.';
+    }
+    if (r.includes('too many') || r.includes('rate limit') || r.includes('429')) {
+      return 'Too many sign-in attempts. Wait a moment, then try again.';
+    }
+    return 'Sign in failed. Check your credentials and try again.';
+  }
+
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
     setError('');
+    setErrorDetail('');
     setLoading(true);
     try {
       const { token } = await login(email.trim(), password);
@@ -59,7 +82,9 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
       await refetch(); // populate AuthContext with user data (role, id) before AppInner mounts
       onAuthenticated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed. Check your credentials and try again.');
+      const raw = err instanceof Error ? err.message : 'Login failed.';
+      setError(detectLoginError(raw));
+      setErrorDetail(raw);
       emailRef.current?.focus();
     } finally {
       setLoading(false);
@@ -235,7 +260,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps): JSX.Element {
             {error && (
               <div className="login-error" role="alert">
                 <i className="ti ti-alert-circle" aria-hidden="true" />
-                {error}
+                <FeedbackMessage message={error} detail={errorDetail} isBusy={loading} />
               </div>
             )}
 
